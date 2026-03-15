@@ -26,6 +26,7 @@ import { ArrowLeft, Plus, Calendar, Clock, Trash2, X, Edit3, ListOrdered } from 
 import DateTimePicker from '@react-native-community/datetimepicker';
 import MonthCalendar from '../../components/ui/MonthCalendar';
 import Gradient from '../../components/ui/Gradient';
+import { WebDatePickerModal } from '../../components/WebDateTimePicker';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
@@ -445,6 +446,19 @@ export default function MinistryAgendaScreen() {
                     <Text style={styles.dateBtnText}>{eventDate ? formatDateBR(eventDate) : 'Selecionar'}</Text>
                   </TouchableOpacity>
 
+                  {Platform.OS === 'web' && (
+                    <WebDatePickerModal
+                      visible={showDatePicker}
+                      value={datePickerValue}
+                      onSelect={(d) => {
+                        setDatePickerValue(d);
+                        setEventDate(d.toISOString().split('T')[0]);
+                        setShowDatePicker(false);
+                      }}
+                      onClose={() => setShowDatePicker(false)}
+                      title="Selecione a data"
+                    />
+                  )}
                   {Platform.OS === 'android' && showDatePicker && (
                     <DateTimePicker value={datePickerValue} mode="date" display="default" onChange={onDatePickerChange} locale="pt-BR" />
                   )}

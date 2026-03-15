@@ -26,6 +26,7 @@ import { decode } from 'base64-arraybuffer';
 
 import { supabase } from '../../services/supabase';
 import Gradient from '../../components/ui/Gradient';
+import { WebDatePickerModal, WebTimePickerModal } from '../../components/WebDateTimePicker';
 import { COLORS } from '../../constants/colors';
 import { RootStackParamList } from '../../types/navigation';
 
@@ -363,7 +364,17 @@ export default function CreateEventScreen() {
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
 
-      {/* --- DATA: Android = nativo (já tem OK); iOS = modal com spinner e Confirmar --- */}
+      {/* --- DATA: Web = modal HTML5; Android = nativo; iOS = modal com spinner --- */}
+      {Platform.OS === 'web' && (
+        <WebDatePickerModal
+          visible={showDatePicker}
+          value={formData.date}
+          onSelect={(d) => { setFormData((prev) => ({ ...prev, date: d })); setShowDatePicker(false); }}
+          onClose={() => setShowDatePicker(false)}
+          minimumDate={eventToEdit ? undefined : new Date()}
+          title="Selecione a Data"
+        />
+      )}
       {Platform.OS === 'android' && showDatePicker && (
         <DateTimePicker
           value={formData.date}
@@ -399,7 +410,16 @@ export default function CreateEventScreen() {
         </Modal>
       )}
 
-      {/* --- HORA: Android = nativo (já tem OK); iOS = modal com spinner e Confirmar --- */}
+      {/* --- HORA: Web = modal HTML5; Android = nativo; iOS = modal com spinner --- */}
+      {Platform.OS === 'web' && (
+        <WebTimePickerModal
+          visible={showTimePicker}
+          value={formData.time}
+          onSelect={(t) => { setFormData((prev) => ({ ...prev, time: t })); setShowTimePicker(false); }}
+          onClose={() => setShowTimePicker(false)}
+          title="Selecione a Hora"
+        />
+      )}
       {Platform.OS === 'android' && showTimePicker && (
         <DateTimePicker
           value={parseTimeToDate(formData.time)}

@@ -27,6 +27,7 @@ import { ArrowLeft, Plus, CheckCircle, Circle, Trash2, Calendar, Users, ListTodo
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import Gradient from '../../components/ui/Gradient';
+import { WebDateInputInline } from '../../components/WebDateTimePicker';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
@@ -209,17 +210,17 @@ export default function MinistryDetailScreen() {
   const confirmTaskDateAndReopenForm = () => {
     setTaskDueDate(taskDatePickerValue.toISOString().split('T')[0]);
     setShowTaskDatePicker(false);
-    if (Platform.OS === 'ios') setTimeout(() => setShowTaskModal(true), 100);
+    if (Platform.OS === 'ios' || Platform.OS === 'web') setTimeout(() => setShowTaskModal(true), 100);
   };
 
   const cancelTaskDatePickerAndReopenForm = () => {
     setShowTaskDatePicker(false);
-    if (Platform.OS === 'ios') setTimeout(() => setShowTaskModal(true), 100);
+    if (Platform.OS === 'ios' || Platform.OS === 'web') setTimeout(() => setShowTaskModal(true), 100);
   };
 
   const openTaskDatePicker = () => {
     setTaskDatePickerValue(taskDueDate ? new Date(taskDueDate + 'T12:00:00') : new Date());
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' || Platform.OS === 'web') {
       setShowTaskModal(false);
       setTimeout(() => setShowTaskDatePicker(true), 300);
     } else {
@@ -810,15 +811,23 @@ export default function MinistryDetailScreen() {
                   <X size={24} color={COLORS.text} />
                 </TouchableOpacity>
               </View>
-              <DateTimePicker
-                value={taskDatePickerValue}
-                mode="date"
-                display="spinner"
-                onChange={onTaskDateChange}
-                locale="pt-BR"
-                textColor={COLORS.text}
-                style={styles.datePicker}
-              />
+              {Platform.OS === 'ios' && (
+                <DateTimePicker
+                  value={taskDatePickerValue}
+                  mode="date"
+                  display="spinner"
+                  onChange={onTaskDateChange}
+                  locale="pt-BR"
+                  textColor={COLORS.text}
+                  style={styles.datePicker}
+                />
+              )}
+              {Platform.OS === 'web' && (
+                <WebDateInputInline
+                  value={taskDatePickerValue}
+                  onChange={(d) => setTaskDatePickerValue(d)}
+                />
+              )}
               <TouchableOpacity style={styles.modalSaveBtn} onPress={confirmTaskDateAndReopenForm}>
                 <Text style={styles.modalSaveText}>Confirmar</Text>
               </TouchableOpacity>
