@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, Flame } from 'lucide-react-native';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { signIn, signUp, getGoogleSignInUrl, getCurrentUser, resetPassword } from '../services/supabase';
+import { signIn, signUp, getGoogleSignInUrl, getCurrentUser, resetPassword, GOOGLE_REDIRECT_SCHEME } from '../services/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS } from '../constants/colors';
