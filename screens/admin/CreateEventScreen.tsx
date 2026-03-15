@@ -52,6 +52,7 @@ export default function CreateEventScreen() {
     requires_registration: false,
     is_paid: false,
     price: '',
+    payment_url: '',
   });
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
@@ -74,12 +75,17 @@ export default function CreateEventScreen() {
         requires_registration: ev.requires_registration ?? false,
         is_paid: ev.is_paid ?? false,
         price: ev.price ? String(ev.price) : '',
+        payment_url: ev.payment_url ?? '',
       });
     }
   }, [eventToEdit]);
 
   const onChangeDate = (event: any, selectedDate?: Date) => {
-    if (selectedDate) setFormData({ ...formData, date: selectedDate });
+    if (Platform.OS === 'android') {
+      // No Android o calendário nativo só dispara onChange ao tocar em OK/Cancelar; fechar o modal aqui.
+      setShowDatePicker(false);
+    }
+    if (selectedDate) setFormData((prev) => ({ ...prev, date: selectedDate }));
   };
 
   const parseTimeToDate = (timeStr: string): Date => {
@@ -90,10 +96,13 @@ export default function CreateEventScreen() {
   };
 
   const onChangeTime = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
     if (selectedDate) {
       const h = String(selectedDate.getHours()).padStart(2, '0');
       const m = String(selectedDate.getMinutes()).padStart(2, '0');
-      setFormData({ ...formData, time: `${h}:${m}` });
+      setFormData((prev) => ({ ...prev, time: `${h}:${m}` }));
     }
   };
 
@@ -166,6 +175,7 @@ export default function CreateEventScreen() {
       requires_registration: formData.requires_registration,
       is_paid: formData.is_paid,
       price: formData.is_paid ? parseFloat(String(formData.price).replace(',', '.')) : 0,
+      payment_url: formData.is_paid && formData.payment_url?.trim() ? formData.payment_url.trim() : null,
       category: categoryToSave,
       event_type: eventTypeForDb,
     };
@@ -322,13 +332,24 @@ export default function CreateEventScreen() {
                       <Switch value={formData.is_paid} onValueChange={(val) => setFormData({ ...formData, is_paid: val })} />
                     </View>
                     {formData.is_paid && (
-                      <TextInput
-                        style={[styles.input, { marginTop: 10 }]}
-                        placeholder="Valor R$"
-                        keyboardType="numeric"
-                        value={formData.price}
-                        onChangeText={(t) => setFormData({ ...formData, price: t })}
-                      />
+                      <>
+                        <TextInput
+                          style={[styles.input, { marginTop: 10 }]}
+                          placeholder="Valor R$"
+                          keyboardType="numeric"
+                          value={formData.price}
+                          onChangeText={(t) => setFormData({ ...formData, price: t })}
+                        />
+                        <Text style={[styles.label, { marginTop: 12 }]}>Link de pagamento</Text>
+                        <TextInput
+                          style={[styles.input, { marginTop: 4 }]}
+                          placeholder="https://... (Mercado Pago, PIX, etc.)"
+                          keyboardType="url"
+                          autoCapitalize="none"
+                          value={formData.payment_url}
+                          onChangeText={(t) => setFormData({ ...formData, payment_url: t })}
+                        />
+                      </>
                     )}
                   </View>
                 )}
@@ -342,52 +363,75 @@ export default function CreateEventScreen() {
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
 
-      {/* --- MODAL DATA --- */}
-      <Modal transparent visible={showDatePicker} animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.iosSheet}>
-            <View style={styles.sheetHeader}><Text style={styles.sheetTitle}>Selecione a Data</Text></View>
-            <View style={styles.pickerContainer}>
-              <DateTimePicker
-                value={formData.date}
-                mode="date"
-                display="spinner"
-                onChange={onChangeDate}
-                minimumDate={eventToEdit ? undefined : new Date()}
-                locale="pt-BR"
-                textColor="#000"
-                style={{ height: 220, width: '100%' }}
-              />
+      {/* --- DATA: Android = nativo (já tem OK); iOS = modal com spinner e Confirmar --- */}
+      {Platform.OS === 'android' && showDatePicker && (
+        <DateTimePicker
+          value={formData.date}
+          mode="date"
+          display="default"
+          onChange={onChangeDate}
+          minimumDate={eventToEdit ? undefined : new Date()}
+          locale="pt-BR"
+        />
+      )}
+      {Platform.OS === 'ios' && (
+        <Modal transparent visible={showDatePicker} animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.iosSheet}>
+              <View style={styles.sheetHeader}><Text style={styles.sheetTitle}>Selecione a Data</Text></View>
+              <View style={styles.pickerContainer}>
+                <DateTimePicker
+                  value={formData.date}
+                  mode="date"
+                  display="spinner"
+                  onChange={onChangeDate}
+                  minimumDate={eventToEdit ? undefined : new Date()}
+                  locale="pt-BR"
+                  textColor="#000"
+                  style={{ height: 220, width: '100%' }}
+                />
+              </View>
+              <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowDatePicker(false)}>
+                <Text style={styles.confirmBtnText}>Confirmar</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowDatePicker(false)}>
-              <Text style={styles.confirmBtnText}>Confirmar</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
-      {/* --- MODAL HORA --- */}
-      <Modal transparent visible={showTimePicker} animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.iosSheet}>
-            <View style={styles.sheetHeader}><Text style={styles.sheetTitle}>Selecione a Hora</Text></View>
-            <View style={styles.pickerContainer}>
-              <DateTimePicker
-                value={parseTimeToDate(formData.time)}
-                mode="time"
-                display="spinner"
-                onChange={onChangeTime}
-                locale="pt-BR"
-                textColor="#000"
-                style={{ height: 220, width: '100%' }}
-              />
+      {/* --- HORA: Android = nativo (já tem OK); iOS = modal com spinner e Confirmar --- */}
+      {Platform.OS === 'android' && showTimePicker && (
+        <DateTimePicker
+          value={parseTimeToDate(formData.time)}
+          mode="time"
+          display="default"
+          onChange={onChangeTime}
+          locale="pt-BR"
+        />
+      )}
+      {Platform.OS === 'ios' && (
+        <Modal transparent visible={showTimePicker} animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.iosSheet}>
+              <View style={styles.sheetHeader}><Text style={styles.sheetTitle}>Selecione a Hora</Text></View>
+              <View style={styles.pickerContainer}>
+                <DateTimePicker
+                  value={parseTimeToDate(formData.time)}
+                  mode="time"
+                  display="spinner"
+                  onChange={onChangeTime}
+                  locale="pt-BR"
+                  textColor="#000"
+                  style={{ height: 220, width: '100%' }}
+                />
+              </View>
+              <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowTimePicker(false)}>
+                <Text style={styles.confirmBtnText}>Confirmar</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowTimePicker(false)}>
-              <Text style={styles.confirmBtnText}>Confirmar</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       {/* SUCESSO */}
       <Modal visible={showSuccessModal} transparent animationType="fade">

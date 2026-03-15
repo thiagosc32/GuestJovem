@@ -8,9 +8,10 @@ import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 interface MonthCalendarProps {
   events: Array<{ id: string; date: string; title: string; category: string }>;
   onDatePress?: (date: Date) => void;
+  onMonthChange?: (date: Date) => void;
 }
 
-export default function MonthCalendar({ events, onDatePress }: MonthCalendarProps) {
+export default function MonthCalendar({ events, onDatePress, onMonthChange }: MonthCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const getDaysInMonth = (date: Date) => {
@@ -30,11 +31,15 @@ export default function MonthCalendar({ events, onDatePress }: MonthCalendarProp
   };
 
   const handlePreviousMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+    const next = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+    setCurrentDate(next);
+    onMonthChange?.(next);
   };
 
   const handleNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    const next = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+    setCurrentDate(next);
+    onMonthChange?.(next);
   };
 
   const handleDatePress = (day: number) => {
@@ -81,6 +86,7 @@ export default function MonthCalendar({ events, onDatePress }: MonthCalendarProp
           }
 
           const eventCount = getEventCountForDate(day);
+          const hasEvents = eventCount > 0;
           const isToday =
             day === new Date().getDate() &&
             currentDate.getMonth() === new Date().getMonth() &&
@@ -89,15 +95,18 @@ export default function MonthCalendar({ events, onDatePress }: MonthCalendarProp
           return (
             <TouchableOpacity
               key={day}
-              style={[styles.dayCell, isToday && styles.todayCell]}
+              style={[
+                styles.dayCell,
+                isToday && styles.todayCell,
+                hasEvents && styles.hasEventsCell,
+              ]}
               onPress={() => handleDatePress(day)}
             >
-              <Text style={[styles.dayText, isToday && styles.todayText]}>{day}</Text>
-              {eventCount > 0 && (
-                <View style={styles.eventDot}>
-                  <Text style={styles.eventDotText}>{eventCount}</Text>
-                </View>
-              )}
+              <Text style={[
+                styles.dayText,
+                isToday && styles.todayText,
+                hasEvents && styles.hasEventsText,
+              ]}>{day}</Text>
             </TouchableOpacity>
           );
         })}
@@ -169,19 +178,12 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '600',
   },
-  eventDot: {
-    position: 'absolute',
-    bottom: 4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: COLORS.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
+  hasEventsCell: {
+    backgroundColor: COLORS.spiritualGold ?? '#F9A825',
+    borderRadius: BORDER_RADIUS.SM,
   },
-  eventDotText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#fff',
+  hasEventsText: {
+    color: '#1a1a1a',
+    fontWeight: '700',
   },
 });

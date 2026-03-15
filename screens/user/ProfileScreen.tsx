@@ -11,24 +11,35 @@ import {
   TextInput, 
   Modal, 
   KeyboardAvoidingView,
-  Alert
+  Alert,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Mail, Phone, Calendar, Award, LogOut, Edit, Camera, CheckCircle, X, Church, Briefcase, Users as UsersIcon, Shield } from 'lucide-react-native';
+import { User, Mail, Phone, Calendar, Award, LogOut, Edit, Camera, CheckCircle, X, Church, Briefcase, Users as UsersIcon, Shield, Trophy, ChevronRight, QrCode, FileText, Flame, BookOpen, BookMarked, PenLine, MessageCircle, ListChecks } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 
-import { supabase } from '../../services/supabase'; 
+import { supabase } from '../../services/supabase';
+import { getJourneySummary } from '../../services/spiritualJourney';
+import { getUnlockedAchievements } from '../../services/achievementsService';
 import Gradient from '../../components/ui/Gradient';
 import ProgressCard from '../../components/ProgressCard';
+import LevelDisclaimer from '../../components/LevelDisclaimer';
 import { COLORS } from '../../constants/colors';
+import { SPIRITUAL_LEVELS, LEVEL_DISCLAIMER_MESSAGE } from '../../constants/spiritualJourney';
+import { isFeatureAvailableForLevel, getLockedFeatureAlert, LEVEL_NAMES } from '../../constants/featureGates';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { SHADOWS, TYPOGRAPHY } from '../../constants/theme';
-import { mockAchievements } from '../../data/mockData';
 import { UserProfile } from '../../types/models';
+import { getUserQRPayload } from '../../constants/userQR';
+
+let QRCodeComponent: React.ComponentType<{ value: string; size: number; backgroundColor?: string; color?: string }> | null = null;
+try {
+  QRCodeComponent = require('react-native-qrcode-svg').default;
+} catch (_) {}
 
 // Helper para decode sem biblioteca externa
 const decodeBase64 = (base64: string) => {
@@ -47,9 +58,6 @@ const getRoleDetails = (role: string) => {
     default: return { color: COLORS.accent, label: 'Jovem' };
   }
 };
-const calcLevelFromAttendance = (days: number) => Math.min(10, 1 + Math.floor(days / 3));
-const calcSpiritualProgress = (days: number, level: number) => Math.min(100, days * 4 + level * 5);
-
 export default function ProfileScreen() {
   const navigation = useNavigation();
   
@@ -59,9 +67,11 @@ export default function ProfileScreen() {
   const [isVisible, setIsVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [attendanceDays, setAttendanceDays] = useState(0);
-  const [level, setLevel] = useState(1);
+  const [levelName, setLevelName] = useState('Ouvir');
+  const [levelNumber, setLevelNumber] = useState(1);
   const [spiritualProgress, setSpiritualProgress] = useState(0);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showLevelsModal, setShowLevelsModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -70,6 +80,10 @@ export default function ProfileScreen() {
   const [showVolunteerOtherInput, setShowVolunteerOtherInput] = useState(false);
   const [volunteerOtherText, setVolunteerOtherText] = useState('');
 
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [unlockedBadges, setUnlockedBadges] = useState<Array<{ id: string; title: string; icon: string }>>([]);
   const [profileData, setProfileData] = useState<UserProfile>({
     name: '',
     email: '',
@@ -91,33 +105,134 @@ export default function ProfileScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      loadProfileData();
-    }, [])
-  );
-
-  const loadProfileData = async () => {
+  const runLoadProfile = React.useCallback(async () => {
+    setProfileLoading(true);
+    setProfileError(null);
     try {
-      let authUser = (await supabase.auth.getUser()).data?.user;
-      if (!authUser) {
-        await new Promise((r) => setTimeout(r, 500));
-        authUser = (await supabase.auth.getUser()).data?.user;
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        await new Promise((r) => setTimeout(r, 200));
+        ({ data: { session } } = await supabase.auth.getSession());
       }
-      if (!authUser) return;
+      const userId = session?.user?.id;
+      if (!userId) {
+        setProfileLoading(false);
+        return;
+      }
+      setCurrentUserId(userId);
+      const userEmail = session.user.email ?? '';
 
-      const userId = authUser.id;
+      const cached = await AsyncStorage.getItem('userProfile');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as UserProfile & { email?: string };
+          if (parsed?.email && parsed.email === userEmail) {
+            setProfileData(parsed);
+            setFormData(parsed);
+          }
+        } catch (_) {}
+      }
 
-      const { count: attendanceCount } = await supabase.from('attendance_records').select('id', { count: 'exact', head: true }).eq('user_id', userId);
-      const days = attendanceCount ?? 0;
-      const lvl = calcLevelFromAttendance(days);
-      setAttendanceDays(days);
-      setLevel(lvl);
-      setSpiritualProgress(calcSpiritualProgress(days, lvl));
+      await carregarPerfil(userId, userEmail);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Erro ao carregar perfil';
+      setProfileError(msg);
+    } finally {
+      setProfileLoading(false);
+      infoFadeAnim.setValue(0);
+      Animated.timing(infoFadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    }
+  }, []);
 
-      const defaults: UserProfile = {
-        name: '',
-        email: authUser.email ?? '',
+  useFocusEffect(React.useCallback(() => { runLoadProfile(); }, [runLoadProfile]));
+
+  async function carregarPerfil(userId: string, userEmail: string) {
+    try {
+      const [userRes, attendanceRes, journey, youthRes] = await Promise.all([
+        supabase.from('users').select('*').eq('id', userId).single(),
+        supabase.from('attendance_records').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+        getJourneySummary(userId),
+        supabase.from('youth_profiles').select('church, calling, volunteer').eq('user_id', userId).limit(1).maybeSingle(),
+      ]);
+
+      const userRow = userRes.data;
+      const userError = userRes.error;
+      if (userError) throw userError;
+
+      setAttendanceDays(attendanceRes.count ?? 0);
+
+      try {
+        if (journey) {
+          setLevelNumber(journey.level);
+          setLevelName(journey.levelName);
+          setSpiritualProgress(Math.round(journey.progressPercent));
+        } else {
+          setLevelNumber(1);
+          setLevelName('Ouvir');
+          setSpiritualProgress(0);
+        }
+      } catch (_) {
+        setLevelNumber(1);
+        setLevelName('Ouvir');
+        setSpiritualProgress(0);
+      }
+
+      const youth = youthRes.data as { church?: string; calling?: string; volunteer?: string[] } | null;
+
+      if (!userRow) {
+        const fallback: UserProfile = {
+          name: 'Usuário',
+          email: userEmail,
+          phone: '',
+          bio: '',
+          photoUri: '',
+          church: youth?.church ?? '',
+          calling: (youth?.calling as UserProfile['calling']) ?? undefined,
+          volunteer: youth?.volunteer ?? [],
+          role: 'jovem',
+        };
+        setProfileData(fallback);
+        setFormData(fallback);
+        await AsyncStorage.setItem('userProfile', JSON.stringify(fallback));
+        return;
+      }
+
+      const d = userRow as Record<string, unknown>;
+      const church = (d.church != null && d.church !== '') ? String(d.church) : (youth?.church ?? '');
+      const calling = (d.calling != null && d.calling !== '') ? (d.calling as UserProfile['calling']) : (youth?.calling as UserProfile['calling'] ?? undefined);
+      const volunteer = (Array.isArray(d.volunteer) && (d.volunteer as string[]).length > 0) ? (d.volunteer as string[]) : (youth?.volunteer ?? []);
+
+      const updatedProfile: UserProfile = {
+        name: (d.name && String(d.name)) || 'Usuário',
+        email: (d.email && String(d.email)) || userEmail,
+        phone: (d.phone && String(d.phone)) || '',
+        bio: '',
+        photoUri: (d.avatar_url && String(d.avatar_url)) || '',
+        church,
+        calling: calling || undefined,
+        volunteer,
+        role: ((d.role as UserProfile['role']) || 'jovem'),
+      };
+
+      setIsAdmin(d.role === 'admin');
+      setProfileData(updatedProfile);
+      setFormData(updatedProfile);
+      await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+
+      const level = journey?.level ?? 1;
+      if (isFeatureAvailableForLevel('badges', level)) {
+        getUnlockedAchievements(userId)
+          .then((badges) => setUnlockedBadges(badges.map((b) => ({ id: b.id, title: b.definition.title, icon: b.definition.icon }))))
+          .catch(() => setUnlockedBadges([]));
+      } else {
+        setUnlockedBadges([]);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro ao carregar perfil';
+      setProfileError(message);
+      const fallback: UserProfile = {
+        name: 'Usuário',
+        email: userEmail,
         phone: '',
         bio: '',
         photoUri: '',
@@ -126,47 +241,10 @@ export default function ProfileScreen() {
         volunteer: [],
         role: 'jovem',
       };
-
-      const fetchUser = async () => {
-        const { data, error } = await supabase.from('users').select('name, email, role, avatar_url, phone').eq('id', userId).single();
-        if (error) throw error;
-        return data;
-      };
-
-      let userData: any = null;
-      try {
-        userData = await fetchUser();
-      } catch (e) {
-        await new Promise((r) => setTimeout(r, 400));
-        userData = await fetchUser();
-      }
-
-      if (!userData) return;
-
-      const { data: youthData } = await supabase.from('youth_profiles').select('church, calling, volunteer').eq('user_id', userId).limit(1).maybeSingle();
-      const youth = youthData as { church?: string; calling?: string; volunteer?: string[] } | null;
-
-      const d = userData;
-      const updatedProfile: UserProfile = {
-        ...defaults,
-        name: d.name || 'Usuário',
-        email: d.email || authUser.email || '',
-        phone: d.phone || '',
-        role: (d.role as UserProfile['role']) || 'jovem',
-        church: youth?.church ?? '',
-        calling: (youth?.calling as UserProfile['calling']) ?? undefined,
-        volunteer: youth?.volunteer ?? [],
-        photoUri: d.avatar_url || '',
-      };
-
-      setIsAdmin(d.role === 'admin');
-      setProfileData(updatedProfile);
-      setFormData(updatedProfile);
-      await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
-    } catch (error) {
-      console.error('Erro ao sincronizar perfil:', error);
+      setProfileData(fallback);
+      setFormData(fallback);
     }
-  };
+  }
 
   const animateInfoSection = () => {
     infoFadeAnim.setValue(0);
@@ -272,14 +350,12 @@ export default function ProfileScreen() {
     const { error: userError } = await supabase.from('users').update({ ...userUpdate, ...youthPayload }).eq('id', user.id);
     if (userError) {
       await supabase.from('users').update(userUpdate).eq('id', user.id);
-      const { data: existingYouth } = await supabase.from('youth_profiles').select('id').eq('user_id', user.id).limit(1).maybeSingle();
-      if (existingYouth) {
-        const { error: youthErr } = await supabase.from('youth_profiles').update(youthPayload).eq('user_id', user.id);
-        if (youthErr) throw youthErr;
-      } else {
-        const { error: youthErr } = await supabase.from('youth_profiles').insert({ user_id: user.id, baptized: false, ...youthPayload });
-        if (youthErr) throw youthErr;
-      }
+    }
+    const { data: existingYouth } = await supabase.from('youth_profiles').select('id').eq('user_id', user.id).limit(1).maybeSingle();
+    if (existingYouth) {
+      await supabase.from('youth_profiles').update(youthPayload).eq('user_id', user.id);
+    } else {
+      await supabase.from('youth_profiles').insert({ user_id: user.id, baptized: false, ...youthPayload });
     }
 
     await AsyncStorage.setItem('userProfile', JSON.stringify(formData));
@@ -307,88 +383,263 @@ export default function ProfileScreen() {
 
   const callingOptions: Array<'Apóstolo' | 'Profeta' | 'Evangelista' | 'Pastor' | 'Mestre'> = ['Apóstolo', 'Profeta', 'Evangelista', 'Pastor', 'Mestre'];
   const volunteerOptions = ['midia', 'som', 'backstage', 'mesa', 'limpeza', 'louvor', 'consolidação', 'kids', 'adolescentes', 'pré adolescentes', 'jovens', 'estacionamento', 'outros'];
-  const unlockedAchievements = mockAchievements.filter((a) => a.unlockedAt);
+
+  if (profileLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingLabel}>Carregando perfil...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorTitle}>Erro ao carregar perfil</Text>
+          <Text style={styles.errorMessage}>{profileError}</Text>
+          <TouchableOpacity
+            style={styles.errorRetryBtn}
+            onPress={runLoadProfile}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.errorRetryText}>Tentar novamente</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!profileData?.email) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorTitle}>Nenhum perfil encontrado</Text>
+          <Text style={styles.errorMessage}>Faça login novamente ou tente mais tarde.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="light-content" />
       <Animated.View style={[styles.container, { opacity: Platform.OS === 'web' ? (isVisible ? 1 : 0) : fadeAnim }]}>
-        
-        {/* HEADER */}
-        <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
-          <View style={styles.headerTop}>
-            <TouchableOpacity style={styles.editButton} onPress={() => { setFormData(profileData); setShowEditModal(true); }} activeOpacity={0.85}>
+        {/* Hero com gradiente e avatar */}
+        <View style={styles.hero}>
+          <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.secondary]} style={styles.heroGradient} />
+          <View style={styles.heroContent}>
+            <View style={styles.avatarWrap}>
+              <View style={styles.avatarOuter}>
+                <View style={styles.avatar}>
+                  {profileData.photoUri ? (
+                    <Image source={{ uri: profileData.photoUri }} style={styles.avatarImage} contentFit="cover" />
+                  ) : (
+                    <User size={36} color="rgba(255,255,255,0.9)" strokeWidth={1.5} />
+                  )}
+                </View>
+              </View>
+            </View>
+            <Text style={styles.heroName}>{profileData.name || 'Usuário'}</Text>
+            <Text style={styles.heroEmail} numberOfLines={1}>{profileData.email}</Text>
+            <View style={styles.rolePill}>
+              <Text style={styles.rolePillText}>{(profileData.role || 'jovem').toUpperCase()}</Text>
+            </View>
+            <TouchableOpacity style={styles.editProfileButton} onPress={() => { setFormData(profileData); setShowEditModal(true); }} activeOpacity={0.9}>
               <Edit size={18} color="#fff" strokeWidth={2} />
-              <Text style={styles.editButtonText}>Editar perfil</Text>
+              <Text style={styles.editProfileButtonText}>Editar perfil</Text>
             </TouchableOpacity>
           </View>
+        </View>
 
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              {profileData.photoUri ? (
-                <Image source={{ uri: profileData.photoUri }} style={styles.avatarImage} contentFit="cover" />
-              ) : (
-                <User size={48} color="rgba(255,255,255,0.9)" strokeWidth={1.5} />
-              )}
+        {/* Card de estatísticas sobre o hero */}
+        <View style={styles.statsWrap}>
+          <TouchableOpacity style={styles.statsCard} onPress={() => setShowLevelsModal(true)} activeOpacity={0.8}>
+            <View style={styles.statItem}>
+              <View style={[styles.statIconWrap, { backgroundColor: '#E6F7ED' }]}>
+                <Trophy size={12} color={COLORS.secondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.statNumber} numberOfLines={1}>Nível {levelNumber}</Text>
+                <Text style={styles.statLabel} numberOfLines={1}>{levelName}</Text>
+              </View>
+              <ChevronRight size={18} color={COLORS.textLight} />
             </View>
-          </View>
-
-          <Text style={styles.userName}>{profileData.name}</Text>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{(profileData.role || 'jovem').toUpperCase()}</Text>
-          </View>
-          <Text style={styles.userEmail}>{profileData.email}</Text>
-          <View style={styles.levelBadge}>
-            <Award size={18} color={COLORS.accent} strokeWidth={2} />
-            <Text style={styles.levelText}>Nível {level}</Text>
-          </View>
-        </Gradient>
+          </TouchableOpacity>
+        </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Animated.View style={{ opacity: Platform.OS === 'web' ? (isVisible ? 1 : 0) : infoFadeAnim }}>
-            <Gradient colors={[COLORS.secondary, `${COLORS.secondary}CC`]} style={styles.profileInfoCard}>
-              <Text style={styles.profileInfoTitle}>Informações do perfil</Text>
-              <InfoRow icon={<Church size={20} color="rgba(255,255,255,0.95)" />} label="Igreja" value={profileData.church} />
-              <InfoRow icon={<Briefcase size={20} color="rgba(255,255,255,0.95)" />} label="Chamado" value={profileData.calling} />
-              <InfoRow icon={<UsersIcon size={20} color="rgba(255,255,255,0.95)" />} label="Voluntário" value={profileData.volunteer?.length ? profileData.volunteer.join(', ') : ''} />
-              {(!profileData.church && !profileData.calling && (!profileData.volunteer || profileData.volunteer.length === 0)) && (
-                <TouchableOpacity style={styles.emptyProfileHint} onPress={() => { setFormData(profileData); setShowEditModal(true); }} activeOpacity={0.8}>
-                  <Text style={styles.emptyProfileHintText}>Toque para preencher suas informações</Text>
-                </TouchableOpacity>
-              )}
-            </Gradient>
-          </Animated.View>
+            {/* Conquistas */}
+            <View style={styles.section}>
+              <TouchableOpacity
+                style={styles.conquistasHeader}
+                onPress={() => {
+                  if (!isFeatureAvailableForLevel('badges', levelNumber)) {
+                    const locked = getLockedFeatureAlert('badges', levelNumber);
+                    const nivelRequerido = LEVEL_NAMES[3] ?? 'Permanecer';
+                    const msgBase = locked?.message ?? `As conquistas são liberadas a partir do nível 3 (${nivelRequerido}).`;
+                    Alert.alert(
+                      'Conquistas em breve',
+                      msgBase + '\n\n' +
+                      'Continue firme na jornada: devocionais, oração, eventos e reflexões te levam ao próximo nível. ' +
+                      `Quando você chegar ao nível 3 (${nivelRequerido}), as conquistas serão liberadas e você poderá ver e desbloquear cada uma. Não desanime — cada passo conta! 🏆`,
+                      [{ text: 'Entendi', style: 'default' }]
+                    );
+                    return;
+                  }
+                  (navigation as any).navigate('MainTabs', { screen: 'BadgesScreen' });
+                }}
+                activeOpacity={0.8}
+              >
+                <Award size={20} color={COLORS.primary} />
+                <Text style={styles.sectionTitle}>Minhas conquistas</Text>
+                <ChevronRight size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+              <View style={styles.badgesRow}>
+                {!isFeatureAvailableForLevel('badges', levelNumber) ? (
+                  <Text style={styles.badgesLocked}>
+                    Conquistas disponíveis a partir do nível 3 (Permanecer). Toque em "Minhas conquistas" acima para saber como liberar.
+                  </Text>
+                ) : unlockedBadges.length === 0 ? (
+                  <Text style={styles.badgesEmpty}>Nenhuma conquista desbloqueada ainda. Continue na jornada!</Text>
+                ) : (
+                  unlockedBadges.slice(0, 8).map((b) => {
+                    const IconMap: Record<string, React.ComponentType<{ color: string; size: number }>> = {
+                      flame: Flame, book: BookOpen, 'book-open': BookMarked, dove: Award, calendar: Calendar, 'pen-line': PenLine, 'message-circle': MessageCircle, 'list-checks': ListChecks,
+                    };
+                    const IconComp = IconMap[b.icon] ?? Award;
+                    return (
+                      <View key={b.id} style={styles.badgePill}>
+                        <IconComp size={22} color={COLORS.success} />
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            </View>
 
-          {isAdmin && (
-            <TouchableOpacity
-              style={styles.adminPanelButton}
-              onPress={() => (navigation as any).navigate('AdminTabs')}
-            >
-              <Shield size={22} color="#fff" />
-              <Text style={styles.adminPanelButtonText}>Painel de Admin</Text>
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>Sobre você</Text>
+              <View style={styles.infoCard}>
+                <InfoRow icon={<Church size={20} color={COLORS.primary} />} label="Igreja" value={profileData.church} />
+                <View style={styles.infoDivider} />
+                <InfoRow icon={<Briefcase size={20} color={COLORS.secondary} />} label="Chamado" value={profileData.calling} />
+                <View style={styles.infoDivider} />
+                <InfoRow icon={<UsersIcon size={20} color={COLORS.spiritualOrange} />} label="Voluntário" value={profileData.volunteer?.length ? profileData.volunteer.join(', ') : ''} />
+                {(!profileData.church && !profileData.calling && (!profileData.volunteer || profileData.volunteer.length === 0)) && (
+                  <>
+                    <View style={styles.infoDivider} />
+                    <TouchableOpacity style={styles.emptyProfileHint} onPress={() => { setFormData(profileData); setShowEditModal(true); }} activeOpacity={0.8}>
+                      <Text style={styles.emptyProfileHintText}>Complete seu perfil</Text>
+                      <ChevronRight size={18} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </View>
+
+            {/* Meu QR Code pessoal - presença em eventos (sempre visível para usuário logado) */}
+            <View style={styles.section}>
+              <View style={styles.qrSectionHeader}>
+                <QrCode size={20} color={COLORS.primary} />
+                <Text style={styles.sectionTitle}>Meu QR Code</Text>
+              </View>
+              <View style={styles.qrCard}>
+                {currentUserId ? (
+                  <>
+                    <View style={styles.qrWrap}>
+                      {QRCodeComponent ? (
+                        <QRCodeComponent value={getUserQRPayload(currentUserId)} size={200} backgroundColor={COLORS.surface} color={COLORS.text} />
+                      ) : (
+                        <View style={styles.qrPlaceholder}>
+                          <QrCode size={80} color={COLORS.textLight} />
+                          <Text style={styles.qrPlaceholderText}>Execute: npm install react-native-qrcode-svg</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.qrHint}>Mostre este QR na entrada dos eventos para registrar sua presença.</Text>
+                  </>
+                ) : (
+                  <Text style={styles.qrHint}>Carregando seu código...</Text>
+                )}
+              </View>
+            </View>
+
+            {isAdmin && (
+              <TouchableOpacity style={styles.adminPanelButton} onPress={() => (navigation as any).navigate('AdminTabs')} activeOpacity={0.9}>
+                <Shield size={22} color="#fff" strokeWidth={2} />
+                <Text style={styles.adminPanelButtonText}>Painel de Admin</Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Crescimento espiritual</Text>
+              <TouchableOpacity onPress={() => setShowLevelsModal(true)} activeOpacity={0.8}>
+                <ProgressCard
+                  title={`Nível: ${levelName}`}
+                  progress={spiritualProgress}
+                  color={COLORS.primary}
+                  subtitle={spiritualProgress >= 100 ? 'Parabéns! Continue firme.' : `${spiritualProgress}% - Continue crescendo na Jornada!`}
+                />
+              </TouchableOpacity>
+              <Text style={styles.levelsHint}>Toque no card para ver todos os níveis</Text>
+              <LevelDisclaimer />
+              <TouchableOpacity
+                style={styles.termsLink}
+                onPress={() => (navigation as any).navigate('SpiritualTerms')}
+                activeOpacity={0.8}
+              >
+                <FileText size={18} color={COLORS.primary} />
+                <Text style={styles.termsLinkText}>Termos de uso espiritual</Text>
+                <ChevronRight size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.85}>
+              <LogOut size={20} color={COLORS.error} strokeWidth={2} />
+              <Text style={styles.logoutText}>Sair da conta</Text>
             </TouchableOpacity>
-          )}
-
-          <View style={styles.statsGrid}>
-            <StatCard value={0} label="Sequência" />
-            <StatCard value={attendanceDays} label="Eventos" />
-            <StatCard value={unlockedAchievements.length} label="Conquistas" />
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Crescimento Espiritual</Text>
-            <ProgressCard
-              title="Nível de Crescimento"
-              progress={spiritualProgress}
-              color={COLORS.primary}
-              subtitle={`${spiritualProgress}% - Continue crescendo!`}
-            />
-          </View>
-
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <LogOut size={20} color={COLORS.error} />
-            <Text style={styles.logoutText}>Sair</Text>
-          </TouchableOpacity>
+          </Animated.View>
         </ScrollView>
+
+        {/* MODAL NÍVEIS */}
+        <Modal visible={showLevelsModal} transparent animationType="slide">
+          <View style={styles.modalBackdrop}>
+            <View style={styles.levelsModalContainer}>
+              <View style={styles.modalHandle} />
+              <View style={styles.levelsModalHeader}>
+                <Text style={styles.levelsModalTitle}>Níveis da Jornada</Text>
+                <TouchableOpacity onPress={() => setShowLevelsModal(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                  <X size={24} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.levelsModalIntro}>{LEVEL_DISCLAIMER_MESSAGE}</Text>
+              <ScrollView style={styles.levelsScroll} showsVerticalScrollIndicator={false}>
+                {SPIRITUAL_LEVELS.map((lvl) => (
+                  <View key={lvl.level} style={[styles.levelItem, levelNumber === lvl.level && styles.levelItemActive]}>
+                    <View style={styles.levelItemHeader}>
+                      <Text style={styles.levelItemNumber}>Nível {lvl.level}</Text>
+                      <Text style={styles.levelItemName}>{lvl.name}</Text>
+                    </View>
+                    <Text style={styles.levelItemShort}>{lvl.shortDescription}</Text>
+                    <Text style={styles.levelItemLong}>{lvl.longDescription}</Text>
+                    {lvl.verse && <Text style={styles.levelItemVerse}>— {lvl.verse}</Text>}
+                  </View>
+                ))}
+              </ScrollView>
+              <Text style={styles.levelsModalFooter}>
+                Seu progresso nunca volta para trás. Foco na constância, não na performance.
+              </Text>
+            </View>
+          </View>
+        </Modal>
 
         {/* MODAL EDITAR */}
         <Modal visible={showEditModal} transparent animationType="slide">
@@ -545,23 +796,15 @@ export default function ProfileScreen() {
   );
 }
 
-// Sub-componentes
 const InfoRow = ({ icon, label, value }: { icon: React.ReactNode; label: string; value?: string }) => (
-  <View style={styles.profileInfoRow}>
-    {icon}
-    <View style={styles.profileInfoTextContainer}>
-      <Text style={styles.profileInfoLabel}>{label}</Text>
-      <Text style={[styles.profileInfoValue, !value && styles.profileInfoValueEmpty]}>
+  <View style={styles.infoRow}>
+    <View style={styles.infoRowIcon}>{icon}</View>
+    <View style={styles.infoRowText}>
+      <Text style={styles.infoRowLabel}>{label}</Text>
+      <Text style={[styles.infoRowValue, !value && styles.infoRowValueEmpty]} numberOfLines={2}>
         {value || 'Não preenchido'}
       </Text>
     </View>
-  </View>
-);
-
-const StatCard = ({ value, label }: any) => (
-  <View style={styles.statCard}>
-    <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
   </View>
 );
 
@@ -573,40 +816,67 @@ const InputGroup = ({ label, value, onChange, placeholder, ...props }: any) => (
 );
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  loadingLabel: { ...TYPOGRAPHY.body, color: COLORS.textSecondary },
+  errorWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+  errorTitle: { ...TYPOGRAPHY.h3, color: COLORS.text, textAlign: 'center' },
+  errorMessage: { ...TYPOGRAPHY.body, color: COLORS.textSecondary, textAlign: 'center' },
+  errorRetryBtn: { marginTop: 8, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.MD },
+  errorRetryText: { color: '#fff', fontWeight: '600', fontSize: 16 },
   container: { flex: 1 },
-  header: { alignItems: 'center', paddingVertical: SPACING.XL, paddingHorizontal: SPACING.LG, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  headerTop: { width: '100%', flexDirection: 'row', justifyContent: 'flex-end', marginBottom: SPACING.MD },
-  editButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 22 },
-  editButtonText: { color: '#fff', marginLeft: 6, fontSize: 13, fontWeight: '600' },
-  avatarContainer: { marginBottom: SPACING.MD },
-  avatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderWidth: 3, borderColor: 'rgba(255,255,255,0.4)' },
+  hero: { paddingTop: SPACING.SM, paddingBottom: 20, paddingHorizontal: SPACING.LG, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, overflow: 'hidden', position: 'relative' },
+  heroGradient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  heroContent: { alignItems: 'center' },
+  editProfileButton: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, marginTop: 14, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
+  editProfileButtonText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  avatarWrap: { marginVertical: SPACING.SM },
+  avatarOuter: { padding: 3, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.25)' },
+  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   avatarImage: { width: '100%', height: '100%' },
-  userName: { fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  userEmail: { fontSize: 14, color: 'rgba(255,255,255,0.88)', marginBottom: SPACING.MD },
-  roleBadge: { backgroundColor: COLORS.accent, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, marginBottom: 8 },
-  roleText: { color: COLORS.secondary, fontSize: 10, fontWeight: '800' },
-  levelBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 22 },
-  levelText: { color: COLORS.accent, marginLeft: 6, fontWeight: '700' },
-  scrollContent: { padding: SPACING.LG },
-  profileInfoCard: { padding: SPACING.LG, borderRadius: BORDER_RADIUS.LG, marginBottom: SPACING.LG, ...SHADOWS.medium },
-  profileInfoTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: SPACING.MD },
-  profileInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.MD },
-  profileInfoTextContainer: { marginLeft: SPACING.MD, flex: 1 },
-  profileInfoLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
-  profileInfoValue: { color: '#fff', fontSize: 16, fontWeight: '500' },
-  profileInfoValueEmpty: { color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' },
-  emptyProfileHint: { marginTop: 4, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', borderRadius: 12, borderStyle: 'dashed' },
-  emptyProfileHintText: { color: 'rgba(255,255,255,0.8)', fontSize: 13 },
-  statsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.LG },
-  statCard: { backgroundColor: COLORS.surface, width: '30%', padding: SPACING.MD, borderRadius: BORDER_RADIUS.MD, alignItems: 'center', ...SHADOWS.small },
-  statValue: { fontSize: 20, fontWeight: 'bold', color: COLORS.primary },
-  statLabel: { fontSize: 12, color: COLORS.textSecondary },
-  section: { marginBottom: SPACING.XL },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text, marginBottom: SPACING.MD },
-  adminPanelButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: COLORS.primary, padding: SPACING.MD, borderRadius: BORDER_RADIUS.MD, marginBottom: SPACING.LG, ...SHADOWS.small },
-  adminPanelButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: SPACING.MD, borderRadius: BORDER_RADIUS.MD, marginTop: SPACING.LG, borderWidth: 1, borderColor: COLORS.error },
-  logoutText: { color: COLORS.error, fontWeight: 'bold', marginLeft: SPACING.SM },
+  heroName: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 2, textAlign: 'center' },
+  heroEmail: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginBottom: 6, textAlign: 'center', maxWidth: '100%' },
+  rolePill: { backgroundColor: 'rgba(255,255,255,0.3)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16 },
+  rolePillText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  statsWrap: { marginHorizontal: SPACING.LG, marginTop: -18, marginBottom: SPACING.SM },
+  statsCard: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 16, padding: 10, alignItems: 'center', justifyContent: 'space-around', ...SHADOWS.medium, elevation: 4 },
+  statItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  statIconWrap: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  statNumber: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  statLabel: { fontSize: 10, color: COLORS.textSecondary, fontWeight: '500' },
+  statDivider: { width: 1, height: 25, backgroundColor: COLORS.border },
+  scrollContent: { padding: SPACING.LG, paddingBottom: SPACING.XXL },
+  section: { marginBottom: 20 },
+  conquistasHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
+  badgePill: { width: 48, height: 48, borderRadius: 24, backgroundColor: `${COLORS.success}18`, justifyContent: 'center', alignItems: 'center' },
+  badgesEmpty: { ...TYPOGRAPHY.caption, color: COLORS.textSecondary, fontStyle: 'italic' },
+  badgesLocked: { ...TYPOGRAPHY.caption, color: COLORS.textSecondary, fontStyle: 'italic', marginTop: 4 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  sectionTitle: { fontSize: 17, fontWeight: 'bold', color: COLORS.text },
+  sectionLink: { fontSize: 14, color: COLORS.primary, fontWeight: '600' },
+  qrSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  qrCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: SPACING.LG, alignItems: 'center', ...SHADOWS.small },
+  qrWrap: { padding: 16, backgroundColor: '#fff', borderRadius: 12, minHeight: 232, justifyContent: 'center', alignItems: 'center' },
+  qrPlaceholder: { alignItems: 'center', paddingVertical: 24 },
+  qrPlaceholderText: { marginTop: 12, fontSize: 12, color: COLORS.textSecondary, textAlign: 'center' },
+  qrHint: { marginTop: SPACING.MD, fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', paddingHorizontal: 8 },
+  infoCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: SPACING.MD, ...SHADOWS.small },
+  infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  infoRowIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  infoRowText: { flex: 1 },
+  infoRowLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600', marginBottom: 2 },
+  infoRowValue: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  infoRowValueEmpty: { fontSize: 14, color: COLORS.textLight, fontStyle: 'italic' },
+  infoDivider: { height: 1, backgroundColor: COLORS.border, marginLeft: 48 },
+  emptyProfileHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 4, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, borderStyle: 'dashed', marginLeft: 0 },
+  emptyProfileHintText: { fontSize: 14, color: COLORS.primary, fontWeight: '700' },
+  adminPanelButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: COLORS.primary, padding: 14, borderRadius: 20, marginBottom: SPACING.MD, ...SHADOWS.small },
+  adminPanelButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  termsLink: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.SM, paddingHorizontal: SPACING.MD, marginTop: SPACING.SM, backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.MD, gap: 10 },
+  termsLinkText: { flex: 1, fontSize: 14, color: COLORS.primary, fontWeight: '600' },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, borderRadius: 20, marginTop: 4, borderWidth: 1.5, borderColor: COLORS.error, backgroundColor: COLORS.surface },
+  logoutText: { color: COLORS.error, fontWeight: '700', marginLeft: 8, fontSize: 16 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalContainer: { backgroundColor: COLORS.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '92%', overflow: 'hidden' },
   modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginTop: SPACING.SM },
@@ -657,4 +927,19 @@ const styles = StyleSheet.create({
   successSubtitle: { ...TYPOGRAPHY.bodySmall, marginTop: 6 },
   successButton: { marginTop: SPACING.XL, backgroundColor: COLORS.primary, paddingHorizontal: 32, paddingVertical: 14, borderRadius: BORDER_RADIUS.MD },
   successButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  levelsHint: { ...TYPOGRAPHY.caption, color: COLORS.textLight, marginTop: 4, marginBottom: SPACING.SM },
+  levelsModalContainer: { backgroundColor: COLORS.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
+  levelsModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.LG, paddingVertical: SPACING.MD, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  levelsModalTitle: { ...TYPOGRAPHY.h3, color: COLORS.text },
+  levelsModalIntro: { ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, paddingHorizontal: SPACING.LG, paddingTop: SPACING.MD, fontStyle: 'italic' },
+  levelsScroll: { maxHeight: 420, paddingHorizontal: SPACING.LG, paddingTop: SPACING.MD },
+  levelItem: { marginBottom: SPACING.LG, padding: SPACING.MD, backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.MD, borderWidth: 1, borderColor: COLORS.border },
+  levelItemActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '08' },
+  levelItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  levelItemNumber: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
+  levelItemName: { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  levelItemShort: { ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginBottom: 6 },
+  levelItemLong: { ...TYPOGRAPHY.bodySmall, color: COLORS.text, lineHeight: 20 },
+  levelItemVerse: { fontSize: 12, color: COLORS.primary, fontStyle: 'italic', marginTop: 6 },
+  levelsModalFooter: { ...TYPOGRAPHY.caption, color: COLORS.textSecondary, paddingHorizontal: SPACING.LG, paddingVertical: SPACING.MD, textAlign: 'center' },
 });

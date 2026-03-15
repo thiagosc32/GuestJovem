@@ -23,9 +23,13 @@ export interface PrayerCardProps {
   onPray?: (requestId: string) => void | Promise<void>;
   onCommentAdded?: (requestId: string) => void;
   onCommentDeleted?: (requestId: string) => void;
+  /** Se false (Ouvir), não pode orar por nem comentar — exibe cadeado */
+  canInteract?: boolean;
+  /** Chamado ao tocar em orar/comentar quando bloqueado */
+  onLockedPress?: () => void;
 }
 
-export default function PrayerCard({ request, hasPrayed = false, onPray, onCommentAdded, onCommentDeleted }: PrayerCardProps) {
+export default function PrayerCard({ request, hasPrayed = false, onPray, onCommentAdded, onCommentDeleted, canInteract = true, onLockedPress }: PrayerCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState<PrayerComment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -159,7 +163,19 @@ export default function PrayerCard({ request, hasPrayed = false, onPray, onComme
   };
 
   const handlePrayPress = () => {
+    if (!canInteract) {
+      onLockedPress?.();
+      return;
+    }
     if (onPray && !request.isAnswered) onPray(request.id);
+  };
+
+  const handleCommentOrToggle = () => {
+    if (!canInteract) {
+      onLockedPress?.();
+      return;
+    }
+    handleToggleComments();
   };
 
   return (
@@ -226,19 +242,30 @@ export default function PrayerCard({ request, hasPrayed = false, onPray, onComme
             <Text style={styles.prayerCountText}>{request.prayerCount} orações</Text>
           </View>
           <View style={styles.footerActions}>
-            <TouchableOpacity style={styles.commentsActionButton} onPress={handleToggleComments}>
-              <MessageCircle size={18} color={COLORS.textSecondary} />
+            <TouchableOpacity
+              style={[styles.commentsActionButton, !canInteract && styles.actionButtonLocked]}
+              onPress={handleCommentOrToggle}
+            >
+              {canInteract ? (
+                <MessageCircle size={18} color={COLORS.textSecondary} />
+              ) : (
+                <Lock size={16} color={COLORS.textSecondary} />
+              )}
               <Text style={styles.commentsActionText}>
                 {Math.max(request.commentsCount ?? 0, comments.length)}
               </Text>
             </TouchableOpacity>
-            {!request.isAnswered && onPray && (
+            {!request.isAnswered && (onPray || !canInteract) && (
               <TouchableOpacity
-                style={[styles.prayButton, hasPrayed && styles.prayButtonActive]}
+                style={[styles.prayButton, hasPrayed && styles.prayButtonActive, !canInteract && styles.actionButtonLocked]}
                 onPress={handlePrayPress}
-                disabled={hasPrayed}
+                disabled={canInteract && hasPrayed}
               >
-                <Heart size={16} color={hasPrayed ? '#fff' : COLORS.primary} fill={hasPrayed ? '#fff' : 'none'} />
+                {canInteract ? (
+                  <Heart size={16} color={hasPrayed ? '#fff' : COLORS.primary} fill={hasPrayed ? '#fff' : 'none'} />
+                ) : (
+                  <Lock size={16} color={COLORS.primary} />
+                )}
                 <Text style={[styles.prayButtonText, hasPrayed && styles.prayButtonTextActive]}>
                   {hasPrayed ? 'Orei' : 'Orar'}
                 </Text>
@@ -310,29 +337,36 @@ export default function PrayerCard({ request, hasPrayed = false, onPray, onComme
                   </View>
                 ))
               )}
-              <View style={styles.commentInputRow}>
-                <TextInput
-                  style={styles.commentInput}
-                  placeholder="Escreva um comentário..."
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={commentText}
-                  onChangeText={setCommentText}
-                  multiline
-                  maxLength={500}
-                  editable={!sendingComment}
-                />
-                <TouchableOpacity
-                  style={[styles.commentSend, (!commentText.trim() || sendingComment) && styles.commentSendDisabled]}
-                  onPress={handleSubmitComment}
-                  disabled={!commentText.trim() || sendingComment}
-                >
-                  {sendingComment ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Send size={18} color="#fff" />
-                  )}
+              {canInteract ? (
+                <View style={styles.commentInputRow}>
+                  <TextInput
+                    style={styles.commentInput}
+                    placeholder="Escreva um comentário..."
+                    placeholderTextColor={COLORS.textSecondary}
+                    value={commentText}
+                    onChangeText={setCommentText}
+                    multiline
+                    maxLength={500}
+                    editable={!sendingComment}
+                  />
+                  <TouchableOpacity
+                    style={[styles.commentSend, (!commentText.trim() || sendingComment) && styles.commentSendDisabled]}
+                    onPress={handleSubmitComment}
+                    disabled={!commentText.trim() || sendingComment}
+                  >
+                    {sendingComment ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Send size={18} color="#fff" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.commentInputLocked} onPress={onLockedPress}>
+                  <Lock size={18} color={COLORS.textSecondary} />
+                  <Text style={styles.commentInputLockedText}>Toque para ver em qual nível está disponível</Text>
                 </TouchableOpacity>
-              </View>
+              )}
             </View>
           )}
 
@@ -525,5 +559,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   commentSendDisabled: { backgroundColor: COLORS.border },
+  actionButtonLocked: { opacity: 0.8 },
+  commentInputLocked: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+    marginTop: SPACING.SM,
+    padding: SPACING.MD,
+    backgroundColor: `${COLORS.border}30`,
+    borderRadius: BORDER_RADIUS.MD,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+  },
+  commentInputLockedText: { ...TYPOGRAPHY.caption, color: COLORS.textSecondary, flex: 1 },
   timestamp: { ...TYPOGRAPHY.caption },
 });

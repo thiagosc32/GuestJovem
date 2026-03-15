@@ -77,7 +77,7 @@ export default function AdminPrivatePrayersScreen() {
     }
     setIsSubmitting(true);
     try {
-      await markPrivatePrayerAnswered(answeringRequest.id, msg);
+      await markPrivatePrayerAnswered(answeringRequest.id, msg, answeringRequest.userId);
       setAnsweringRequest(null);
       setMessageText('');
       await load();

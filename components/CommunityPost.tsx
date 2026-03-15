@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
-import { Heart, MessageCircle, User, Send, Edit2, Trash2 } from 'lucide-react-native';
+import { Heart, MessageCircle, User, Send, Edit2, Trash2, Lock } from 'lucide-react-native';
 import { COLORS } from '../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../constants/theme';
@@ -22,9 +22,13 @@ interface CommunityPostProps {
   onLike?: (postId: string) => void | Promise<void>;
   onCommentAdded?: (postId: string) => void;
   onCommentDeleted?: (postId: string) => void;
+  /** Se false (Semente), não pode curtir nem comentar — exibe cadeado e mostra mensagem ao tocar */
+  canInteract?: boolean;
+  /** Chamado ao tocar em curtir/comentar quando bloqueado */
+  onLockedPress?: () => void;
 }
 
-export default function CommunityPost({ post, onLike, onCommentAdded, onCommentDeleted }: CommunityPostProps) {
+export default function CommunityPost({ post, onLike, onCommentAdded, onCommentDeleted, canInteract = true, onLockedPress }: CommunityPostProps) {
   const [liked, setLiked] = useState(false);
   const likeCount = post.likes;
   const [showComments, setShowComments] = useState(false);
@@ -59,10 +63,22 @@ export default function CommunityPost({ post, onLike, onCommentAdded, onCommentD
   };
 
   const handleLike = () => {
+    if (!canInteract) {
+      onLockedPress?.();
+      return;
+    }
     if (onLike && !liked) {
       setLiked(true);
       onLike(post.id);
     }
+  };
+
+  const handleCommentOrToggle = () => {
+    if (!canInteract) {
+      onLockedPress?.();
+      return;
+    }
+    handleToggleComments();
   };
 
   const handleSubmitComment = async () => {
@@ -166,12 +182,27 @@ export default function CommunityPost({ post, onLike, onCommentAdded, onCommentD
       <Text style={styles.content}>{post.content}</Text>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.actionButton} onPress={handleLike} disabled={!onLike || liked}>
-          <Heart size={20} color={liked ? COLORS.error : COLORS.textSecondary} fill={liked ? COLORS.error : 'none'} />
+        <TouchableOpacity
+          style={[styles.actionButton, !canInteract && styles.actionButtonLocked]}
+          onPress={handleLike}
+          disabled={canInteract && (!onLike || liked)}
+        >
+          {canInteract ? (
+            <Heart size={20} color={liked ? COLORS.error : COLORS.textSecondary} fill={liked ? COLORS.error : 'none'} />
+          ) : (
+            <Lock size={18} color={COLORS.textSecondary} />
+          )}
           <Text style={[styles.actionText, liked && styles.actionTextActive]}>{likeCount}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={handleToggleComments}>
-          <MessageCircle size={20} color={COLORS.textSecondary} />
+        <TouchableOpacity
+          style={[styles.actionButton, !canInteract && styles.actionButtonLocked]}
+          onPress={handleCommentOrToggle}
+        >
+          {canInteract ? (
+            <MessageCircle size={20} color={COLORS.textSecondary} />
+          ) : (
+            <Lock size={18} color={COLORS.textSecondary} />
+          )}
           <Text style={styles.actionText}>{displayCommentsCount}</Text>
         </TouchableOpacity>
       </View>
@@ -238,29 +269,36 @@ export default function CommunityPost({ post, onLike, onCommentAdded, onCommentD
                   </Text>
                 </View>
               ))}
-              <View style={styles.commentInputRow}>
-                <TextInput
-                  style={styles.commentInput}
-                  placeholder="Escreva um comentário..."
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={commentText}
-                  onChangeText={setCommentText}
-                  multiline
-                  maxLength={500}
-                  editable={!sendingComment}
-                />
-                <TouchableOpacity
-                  style={[styles.commentSend, (!commentText.trim() || sendingComment) && styles.commentSendDisabled]}
-                  onPress={handleSubmitComment}
-                  disabled={!commentText.trim() || sendingComment}
-                >
-                  {sendingComment ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Send size={18} color="#fff" />
-                  )}
+              {canInteract ? (
+                <View style={styles.commentInputRow}>
+                  <TextInput
+                    style={styles.commentInput}
+                    placeholder="Escreva um comentário..."
+                    placeholderTextColor={COLORS.textSecondary}
+                    value={commentText}
+                    onChangeText={setCommentText}
+                    multiline
+                    maxLength={500}
+                    editable={!sendingComment}
+                  />
+                  <TouchableOpacity
+                    style={[styles.commentSend, (!commentText.trim() || sendingComment) && styles.commentSendDisabled]}
+                    onPress={handleSubmitComment}
+                    disabled={!commentText.trim() || sendingComment}
+                  >
+                    {sendingComment ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Send size={18} color="#fff" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.commentInputLocked} onPress={onLockedPress}>
+                  <Lock size={18} color={COLORS.textSecondary} />
+                  <Text style={styles.commentInputLockedText}>Toque para ver em qual nível está disponível</Text>
                 </TouchableOpacity>
-              </View>
+              )}
             </>
           )}
         </View>
@@ -343,6 +381,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.XS,
+  },
+  actionButtonLocked: {
+    opacity: 0.8,
   },
   actionText: {
     ...TYPOGRAPHY.bodySmall,
@@ -433,5 +474,22 @@ const styles = StyleSheet.create({
   },
   commentSendDisabled: {
     backgroundColor: COLORS.border,
+  },
+  commentInputLocked: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+    marginTop: SPACING.SM,
+    padding: SPACING.MD,
+    backgroundColor: `${COLORS.border}30`,
+    borderRadius: BORDER_RADIUS.MD,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+  },
+  commentInputLockedText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    flex: 1,
   },
 });

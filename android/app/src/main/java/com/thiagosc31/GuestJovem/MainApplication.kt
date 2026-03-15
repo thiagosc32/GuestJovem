@@ -1,4 +1,4 @@
-package com.thiagosc31.FireYouth
+package com.thiagosc31.GuestJovem
 
 import android.app.Application
 import android.content.res.Configuration

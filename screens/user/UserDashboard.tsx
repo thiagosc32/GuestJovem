@@ -30,17 +30,35 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { supabase, getCurrentUser, getNotifications, getCurrentVerseOfWeek } from '../../services/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase, getCurrentUser, getNotifications, getCurrentVerseOfWeek, createNotification } from '../../services/supabase';
+import { getJourneySummary } from '../../services/spiritualJourney';
+import { getCompanionState } from '../../services/spiritualCompanion';
+import ConstancyBar from '../../components/ConstancyBar';
+import ConstancyLevelUpModal from '../../components/ConstancyLevelUpModal';
+import SheepIllustration from '../../components/SheepIllustration';
+import type { CompanionStateKey } from '../../constants/spiritualCompanion';
+import { COMPANION_STATES, isConstancyStateBetter, getConstancyLevelUpContent, type ConstancyLevelUpContent } from '../../constants/spiritualCompanion';
 import { getDevotionalCategoryLabel } from '../../constants/devotionalCategories';
 import { Announcement } from '../../types/models'; // Certifica-te de ter o tipo Event se necessário
 import Gradient from '../../components/ui/Gradient';
 import ProgressCard from '../../components/ProgressCard';
+import LevelDisclaimer from '../../components/LevelDisclaimer';
 import AnnouncementCard from '../../components/AnnouncementCard';
+import DrawerMenuButton from '../../components/navigation/DrawerMenuButton';
 import { COLORS } from '../../constants/colors';
+import { DEFAULT_EVENT_IMAGE_URL } from '../../constants/images';
 import { SPACING } from '../../constants/dimensions';
 import { SHADOWS } from '../../constants/theme';
 import { mockVerseOfWeek } from '../../data/mockData';
 import { RootStackParamList } from '../../types/navigation';
+
+const COMPANION_AVATAR_COLORS: Record<CompanionStateKey, string> = {
+  strong: '#22C55E',
+  weakening: '#EAB308',
+  weak: '#F97316',
+  bones: '#EF4444',
+};
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -54,11 +72,14 @@ export default function UserDashboard() {
   const [verseOfWeek, setVerseOfWeek] = useState<{ verse: string; reference: string }>(mockVerseOfWeek);
   const [weeklyDevotionals, setWeeklyDevotionals] = useState<any[]>([]);
   const [attendanceDays, setAttendanceDays] = useState(0);
-  const [level, setLevel] = useState(1);
+  const [companionState, setCompanionState] = useState<CompanionStateKey | null>(null);
+  const [levelName, setLevelName] = useState('Ouvir');
   const [spiritualProgress, setSpiritualProgress] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showConstancyLevelUpModal, setShowConstancyLevelUpModal] = useState(false);
+  const [constancyLevelUpContent, setConstancyLevelUpContent] = useState<ConstancyLevelUpContent | null>(null);
 
   const getGreeting = () => {
     const h = new Date().getHours();
@@ -123,8 +144,54 @@ export default function UserDashboard() {
 
       const days = attendanceRes?.count ?? 0;
       setAttendanceDays(days);
-      setLevel(Math.min(10, 1 + Math.floor(days / 3)));
-      setSpiritualProgress(Math.min(100, (days * 4) + (Math.min(10, 1 + Math.floor(days / 3)) * 5)));
+
+      if (userId) {
+        try {
+          const [journey, companion] = await Promise.all([
+            getJourneySummary(userId),
+            getCompanionState(userId),
+          ]);
+          if (journey) {
+            setLevelName(journey.levelName);
+            setSpiritualProgress(Math.round(journey.progressPercent));
+          } else {
+            setLevelName('Ouvir');
+            setSpiritualProgress(0);
+          }
+          const newState = companion?.state ?? null;
+          setCompanionState(newState);
+          const storageKey = `constancy_state_${userId}`;
+          try {
+            const prevState = await AsyncStorage.getItem(storageKey) as CompanionStateKey | null;
+            if (prevState !== null && newState && prevState !== newState) {
+              if (isConstancyStateBetter(prevState, newState)) {
+                const content = getConstancyLevelUpContent(newState, prevState);
+                if (content) {
+                  setConstancyLevelUpContent(content);
+                  setShowConstancyLevelUpModal(true);
+                }
+              } else {
+                await createNotification({
+                  user_id: userId,
+                  type: 'achievement',
+                  title: 'Seu nível de constância mudou',
+                  message: COMPANION_STATES[newState]?.message ?? 'Sua vida espiritual foi atualizada.',
+                  action_url: 'journey',
+                });
+              }
+            }
+            await AsyncStorage.setItem(storageKey, newState ?? '');
+          } catch (_) {}
+        } catch (_) {
+          setLevelName('Ouvir');
+          setSpiritualProgress(0);
+          setCompanionState(null);
+        }
+      } else {
+        setLevelName('Ouvir');
+        setSpiritualProgress(0);
+        setCompanionState(null);
+      }
 
       if (Array.isArray(notificationsList)) {
         const unread = notificationsList.filter((n: any) => !n.is_read).length;
@@ -167,6 +234,7 @@ export default function UserDashboard() {
           <Gradient colors={['#FFFFFF', '#F0F4FF']} style={styles.headerBackgroundGradient} />
           <View style={styles.headerContentWrapper}>
             <Animated.View style={[styles.headerTop, { opacity: headerOpacity, transform: [{ translateY: headerTranslateY }] }]}>
+              <DrawerMenuButton />
               <View style={styles.userProfile}>
                 <View style={styles.avatarGlow}>
                   {currentUser?.avatarUrl ? (
@@ -183,12 +251,12 @@ export default function UserDashboard() {
               <View style={styles.headerActions}>
                 <TouchableOpacity
                   style={styles.actionCircle}
-                  onPress={() => navigation.navigate('PrayerRequestScreen')}
+                  onPress={() => (navigation.getParent() as any)?.navigate('MainTabs', { screen: 'PrayerRequestScreen' })}
                   accessibilityLabel="Pedidos de oração"
                 >
                   <Heart size={20} color={COLORS.text} />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.actionCircle} onPress={() => navigation.navigate('NotificationScreen')}>
+                <TouchableOpacity style={styles.actionCircle} onPress={() => (navigation.getParent() as any)?.getParent()?.navigate('NotificationScreen')}>
                   <Bell size={20} color={COLORS.text} />
                   {unreadNotifications > 0 && <View style={styles.activeDot} />}
                 </TouchableOpacity>
@@ -196,14 +264,31 @@ export default function UserDashboard() {
             </Animated.View>
 
             <Animated.View style={[styles.floatingStatsContainer, { opacity: statsOpacity, transform: [{ translateY: statsTranslateY }] }]}>
-              <View style={styles.subtleStatBox}>
-                <View style={[styles.iconCircleStat, { backgroundColor: '#FFF0E6' }]}><Flame size={14} color={COLORS.spiritualOrange} /></View>
-                <View><Text style={styles.statValue}>{attendanceDays}</Text><Text style={styles.statLabel}>dias</Text></View>
+              <View style={styles.constancyRow}>
+                {companionState ? (
+                  <View style={[styles.constancyAvatarWrap, { backgroundColor: COMPANION_AVATAR_COLORS[companionState] + '22' }]}>
+                    <SheepIllustration state={companionState} color={COMPANION_AVATAR_COLORS[companionState]} size={36} />
+                  </View>
+                ) : (
+                  <View style={[styles.constancyAvatarWrap, { backgroundColor: COLORS.border }]}>
+                    <Flame size={18} color={COLORS.textLight} />
+                  </View>
+                )}
+                <View style={styles.constancyBarWrap}>
+                  {companionState ? (
+                    <ConstancyBar state={companionState} width={92} showLabel />
+                  ) : (
+                    <View style={styles.constancyBarPlaceholder}>
+                      <Flame size={12} color={COLORS.textLight} />
+                      <Text style={styles.constancyBarPlaceholderText}>Constância</Text>
+                    </View>
+                  )}
+                </View>
               </View>
               <View style={styles.statLineDivider} />
               <View style={styles.subtleStatBox}>
                 <View style={[styles.iconCircleStat, { backgroundColor: '#E6F7ED' }]}><Trophy size={14} color={COLORS.secondary} /></View>
-                <View><Text style={styles.statValue}>Nv {level}</Text><Text style={styles.statLabel}>nível</Text></View>
+                <View><Text style={styles.statLabel}>Nível</Text><Text style={styles.statValue} numberOfLines={1}>{levelName}</Text></View>
               </View>
             </Animated.View>
           </View>
@@ -245,7 +330,7 @@ export default function UserDashboard() {
                 <Text style={styles.premiumBadgeText}>SEMANA</Text>
               </View>
             </View>
-            <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('UserTabs', { screen: 'DevotionalScreen' })}>
+            <TouchableOpacity activeOpacity={0.9} onPress={() => (navigation.getParent() as any)?.navigate('MainTabs', { screen: 'DevotionalScreen' })}>
               <View style={styles.newImageCard}>
                 <Image source={{ uri: 'https://images.unsplash.com/photo-1504052434569-70ad5836ab65?q=80&w=2070&auto=format&fit=crop' }} style={StyleSheet.absoluteFillObject} />
                 <Gradient colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.8)']} style={StyleSheet.absoluteFillObject} />
@@ -271,7 +356,7 @@ export default function UserDashboard() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Sua Agenda</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('UserTabs', { screen: 'EventsScreen' })}>
+              <TouchableOpacity onPress={() => (navigation.getParent() as any)?.navigate('MainTabs', { screen: 'EventsScreen' })}>
                 <Text style={styles.seeAllText}>Ver tudo</Text>
               </TouchableOpacity>
             </View>
@@ -283,12 +368,12 @@ export default function UserDashboard() {
                 <TouchableOpacity
                   key={event.id}
                   activeOpacity={0.9}
-                  onPress={() => navigation.navigate('EventDetails', { eventId: event.id })}
+                  onPress={() => (navigation.getParent() as any)?.getParent()?.navigate('EventDetails', { eventId: event.id })}
                   style={{ marginBottom: 12 }}
                 >
                   <View style={styles.eventImageCard}>
                     <Image
-                      source={{ uri: event.image_url || 'https://images.unsplash.com/photo-1523580494863-6f3031224c94?q=80&w=2070&auto=format&fit=crop' }}
+                      source={{ uri: event.image_url || DEFAULT_EVENT_IMAGE_URL }}
                       style={StyleSheet.absoluteFillObject}
                     />
                     <Gradient
@@ -324,20 +409,29 @@ export default function UserDashboard() {
           {/* JORNADA ESPIRITUAL */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Jornada Espiritual</Text>
-            <ProgressCard title="Nível de Crescimento" progress={spiritualProgress} color={COLORS.primary} subtitle={spiritualProgress >= 100 ? 'Parabéns! Continue firme.' : `Baseado em suas ${attendanceDays} presenças em eventos. Participe mais para subir!`} />
+            <ProgressCard title={`Nível: ${levelName}`} progress={spiritualProgress} color={COLORS.primary} subtitle={spiritualProgress >= 100 ? 'Parabéns! Continue firme.' : 'Devocionais, oração, eventos e reflexões são passos nesta jornada. Toque em Jornada para ver mais.'} />
+            <LevelDisclaimer />
           </View>
 
           {/* AÇÕES RÁPIDAS */}
           <View style={styles.quickActions}>
-            <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('PrayerRequestScreen')}>
+            <TouchableOpacity style={styles.actionButton} onPress={() => (navigation.getParent() as any)?.navigate('MainTabs', { screen: 'PrayerRequestScreen' })}>
               <Heart size={24} color={COLORS.spiritualOrange} /><Text style={styles.actionButtonText}>Oração</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('UserTabs', { screen: 'CommunityWall' })}>
+            <TouchableOpacity style={styles.actionButton} onPress={() => (navigation.getParent() as any)?.navigate('MainTabs', { screen: 'CommunityWall' })}>
               <TrendingUp size={24} color={COLORS.success} /><Text style={styles.actionButtonText}>Comunidade</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
       </ContentWrapper>
+      <ConstancyLevelUpModal
+        visible={showConstancyLevelUpModal}
+        content={constancyLevelUpContent}
+        onDismiss={() => {
+          setShowConstancyLevelUpModal(false);
+          setConstancyLevelUpContent(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -347,8 +441,8 @@ const styles = StyleSheet.create({
   premiumHeader: { backgroundColor: '#FFF', paddingBottom: 25, position: 'relative' },
   headerBackgroundGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: '100%', borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
   headerContentWrapper: { paddingHorizontal: 24, paddingTop: Platform.OS === 'ios' ? 10 : 20 },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  userProfile: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, gap: 12 },
+  userProfile: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   avatarGlow: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', ...SHADOWS.small, borderWidth: 2, borderColor: '#F0F4FF' },
   avatarImage: { width: 46, height: 46, borderRadius: 23 },
   subtleGreeting: { fontSize: 13, color: '#8E8E93', fontWeight: '500' },
@@ -362,6 +456,11 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 15, fontWeight: '700', color: '#1C1C1E' },
   statLabel: { fontSize: 11, color: '#8E8E93', fontWeight: '500' },
   statLineDivider: { width: 1, height: 25, backgroundColor: '#E5E5EA' },
+  constancyRow: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, gap: 0 },
+  constancyAvatarWrap: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  constancyBarWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', minWidth: 0 },
+  constancyBarPlaceholder: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  constancyBarPlaceholderText: { fontSize: 11, fontWeight: '600', color: COLORS.textLight },
   scrollContent: { padding: SPACING.LG },
   section: { marginBottom: 28 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },

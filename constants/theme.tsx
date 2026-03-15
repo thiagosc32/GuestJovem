@@ -21,6 +21,12 @@ export const TYPOGRAPHY = {
     lineHeight: 28,
     color: COLORS.text,
   },
+  h4: {
+    fontSize: 17,
+    fontWeight: '600' as const,
+    lineHeight: 24,
+    color: COLORS.text,
+  },
   body: {
     fontSize: 16,
     fontWeight: '400' as const,

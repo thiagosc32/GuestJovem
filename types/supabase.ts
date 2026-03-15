@@ -15,6 +15,7 @@ export interface Database {
           email: string
           name: string
           role: 'user' | 'admin'
+          ministry_function: string | null
           phone: string | null
           avatar_url: string | null
           last_active: string
@@ -25,6 +26,7 @@ export interface Database {
           email: string
           name: string
           role?: 'user' | 'admin'
+          ministry_function?: string | null
           phone?: string | null
           avatar_url?: string | null
           last_active?: string
@@ -35,6 +37,7 @@ export interface Database {
           email?: string
           name?: string
           role?: 'user' | 'admin'
+          ministry_function?: string | null
           phone?: string | null
           avatar_url?: string | null
           last_active?: string
@@ -335,6 +338,8 @@ export interface Database {
           check_in_time: string
           method: 'qr' | 'manual'
           notes: string | null
+          event_title_snapshot: string | null
+          event_date_snapshot: string | null
         }
         Insert: {
           id?: string
@@ -343,6 +348,8 @@ export interface Database {
           check_in_time?: string
           method: 'qr' | 'manual'
           notes?: string | null
+          event_title_snapshot?: string | null
+          event_date_snapshot?: string | null
         }
         Update: {
           id?: string
@@ -351,6 +358,63 @@ export interface Database {
           check_in_time?: string
           method?: 'qr' | 'manual'
           notes?: string | null
+          event_title_snapshot?: string | null
+          event_date_snapshot?: string | null
+        }
+      }
+      visitor_profiles: {
+        Row: {
+          id: string
+          name: string
+          qr_code_token: string | null
+          visit_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          qr_code_token?: string | null
+          visit_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          qr_code_token?: string | null
+          visit_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      event_visitors: {
+        Row: {
+          id: string
+          event_id: string | null
+          visitor_profile_id: string | null
+          name: string | null
+          is_first_time: boolean
+          contact_opt_in: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          event_id?: string | null
+          visitor_profile_id?: string | null
+          name?: string | null
+          is_first_time?: boolean
+          contact_opt_in?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          event_id?: string | null
+          visitor_profile_id?: string | null
+          name?: string | null
+          is_first_time?: boolean
+          contact_opt_in?: boolean
+          created_at?: string
         }
       }
       achievements: {
@@ -478,6 +542,156 @@ export interface Database {
           created_at?: string
         }
       }
+      spiritual_journey_profiles: {
+        Row: {
+          id: string
+          user_id: string
+          total_xp: number
+          current_level: number
+          streak_weeks: number
+          last_activity_date: string | null
+          last_streak_week_start: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          total_xp?: number
+          current_level?: number
+          streak_weeks?: number
+          last_activity_date?: string | null
+          last_streak_week_start?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          total_xp?: number
+          current_level?: number
+          streak_weeks?: number
+          last_activity_date?: string | null
+          last_streak_week_start?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      spiritual_xp_events: {
+        Row: {
+          id: string
+          user_id: string
+          action_type: 'devotional' | 'prayer_register' | 'event_checkin' | 'reflection' | 'discipline'
+          xp_amount: number
+          reference_id: string | null
+          reference_type: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          action_type: 'devotional' | 'prayer_register' | 'event_checkin' | 'reflection' | 'discipline'
+          xp_amount: number
+          reference_id?: string | null
+          reference_type?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          action_type?: 'devotional' | 'prayer_register' | 'event_checkin' | 'reflection' | 'discipline'
+          xp_amount?: number
+          reference_id?: string | null
+          reference_type?: string | null
+          created_at?: string
+        }
+      }
+      spiritual_disciplines: {
+        Row: {
+          id: string
+          key: string
+          title_pt: string
+          category: 'daily' | 'weekly' | 'monthly'
+          xp_amount: number
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          key: string
+          title_pt: string
+          category: 'daily' | 'weekly' | 'monthly'
+          xp_amount?: number
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          key?: string
+          title_pt?: string
+          category?: 'daily' | 'weekly' | 'monthly'
+          xp_amount?: number
+          sort_order?: number
+          created_at?: string
+        }
+      }
+      spiritual_discipline_completions: {
+        Row: {
+          id: string
+          user_id: string
+          discipline_key: string
+          completed_at: string
+          xp_awarded: number
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          discipline_key: string
+          completed_at?: string
+          xp_awarded?: number
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          discipline_key?: string
+          completed_at?: string
+          xp_awarded?: number
+        }
+      }
+      spiritual_reflections: {
+        Row: {
+          id: string
+          user_id: string
+          content: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          content: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          content?: string
+          created_at?: string
+        }
+      }
+      app_settings: {
+        Row: {
+          key: string
+          value: string
+        }
+        Insert: {
+          key: string
+          value: string
+        }
+        Update: {
+          key?: string
+          value?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -494,6 +708,39 @@ export interface Database {
       increment_post_likes: {
         Args: { post_id: string }
         Returns: void
+      }
+      create_notification_for_user: {
+        Args: {
+          p_user_id: string
+          p_type: 'event' | 'prayer' | 'achievement' | 'announcement' | 'reminder'
+          p_title: string
+          p_message: string
+          p_action_url?: string | null
+          p_is_read?: boolean
+        }
+        Returns: string
+      }
+      notify_users_with_role: {
+        Args: {
+          p_role: string
+          p_type: 'event' | 'prayer' | 'achievement' | 'announcement' | 'reminder'
+          p_title: string
+          p_message: string
+          p_action_url?: string | null
+        }
+        Returns: number
+      }
+      delete_devotional_admin: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
+      get_devotional_completions_list: {
+        Args: { days_back?: number }
+        Returns: { id: string; name: string | null; avatar_url: string | null; completions_count: number }[]
+      }
+      get_active_youth_list: {
+        Args: { days_back?: number }
+        Returns: { id: string; name: string | null; avatar_url: string | null }[]
       }
     }
     Enums: {

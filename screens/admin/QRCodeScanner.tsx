@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, CameraView } from 'expo-camera';
 import { ArrowLeft, CheckCircle, XCircle } from 'lucide-react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles } from '../../constants/theme';
-import { mockUsers } from '../../data/mockData';
+import { parseUserQRPayload } from '../../constants/userQR';
+import { supabase, createAttendanceRecord, getEventForCurrentTime } from '../../services/supabase';
 
 export default function QRCodeScanner() {
   const navigation = useNavigation();
+  const route = useRoute();
+  const eventId = (route.params as { eventId?: string })?.eventId ?? null;
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
   const [scanResult, setScanResult] = useState<{ success: boolean; name?: string; message: string } | null>(null);
@@ -29,21 +32,49 @@ export default function QRCodeScanner() {
     }
   };
 
-  const handleBarCodeScanned = ({ type, data }: { type: string; data: string }) => {
+  const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
     setScanned(true);
-    const user = mockUsers.find((u) => u.id === data);
+    const userId = parseUserQRPayload(data);
 
-    if (user) {
+    if (!userId) {
+      setScanResult({ success: false, message: 'QR Code inválido. Use o QR do perfil do jovem.' });
+      setShowModal(true);
+      return;
+    }
+
+    try {
+      const { data: userRow, error: userError } = await supabase.from('users').select('id, name').eq('id', userId).maybeSingle();
+      if (userError || !userRow) {
+        setScanResult({ success: false, message: 'Usuário não encontrado no sistema.' });
+        setShowModal(true);
+        return;
+      }
+
+      let resolvedEventId: string | null = eventId || null;
+      let eventTitle: string | null = null;
+      if (!resolvedEventId) {
+        const eventForNow = await getEventForCurrentTime();
+        if (eventForNow) {
+          resolvedEventId = eventForNow.id;
+          eventTitle = eventForNow.title;
+        }
+      }
+
+      await createAttendanceRecord({
+        user_id: userId,
+        event_id: resolvedEventId,
+        method: 'qr',
+        notes: null,
+      });
+
+      const eventSuffix = eventTitle ? ` no evento "${eventTitle}"` : '';
       setScanResult({
         success: true,
-        name: user.name,
-        message: `${user.name} registrado com sucesso!`,
+        name: userRow.name ?? 'Jovem',
+        message: `${userRow.name ?? 'Jovem'} — presença registrada${eventSuffix}!`,
       });
-    } else {
-      setScanResult({
-        success: false,
-        message: 'Usuário não encontrado. Tente novamente.',
-      });
+    } catch (e: any) {
+      setScanResult({ success: false, message: e.message ?? 'Erro ao registrar presença.' });
     }
     setShowModal(true);
   };

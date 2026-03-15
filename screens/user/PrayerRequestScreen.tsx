@@ -18,21 +18,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Heart, Plus, CheckCircle, Lock, Globe, ArrowLeft, Edit2, Trash2, CheckCircle as CheckIcon } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import PrayerCard, { PrayerCardProps } from '../../components/PrayerCard';
+import Gradient from '../../components/ui/Gradient';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles, SHADOWS } from '../../constants/theme';
+import { isFeatureAvailableForLevel, getLockedFeatureAlert } from '../../constants/featureGates';
+import { getJourneySummary } from '../../services/spiritualJourney';
 import {
   supabase,
   getPrayerRequests,
   createPrayerRequest,
   getPrayedRequestIds,
   togglePray,
+  getPrayerRequestById,
+  createNotification,
   getMyPrayerRequests,
   updatePrayerRequest,
   deletePrayerRequest,
   markPrayerAnswered,
   notifyAdminsOfPrivatePrayerRequest,
 } from '../../services/supabase';
+import { awardXp } from '../../services/spiritualJourney';
+import { notifyAchievementUnlockIfNew } from '../../services/achievementsService';
 import { PrayerRequest } from '../../types/models';
 
 function mapRowToPrayerRequest(row: any): PrayerRequest {
@@ -87,6 +94,9 @@ export default function PrayerRequestScreen() {
   const [prayedIds, setPrayedIds] = useState<Set<string>>(new Set());
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
+  const [canRespondPrayer, setCanRespondPrayer] = useState(false);
+  const [canInteractPrayer, setCanInteractPrayer] = useState(false);
+  const [journeyLevel, setJourneyLevel] = useState(1);
 
   const loadPrayedIds = useCallback(async (userId: string) => {
     try {
@@ -151,6 +161,13 @@ export default function PrayerRequestScreen() {
         const { data: profile } = await supabase.from('users').select('name').eq('id', user.id).single();
         const name = (profile as any)?.name ?? 'Eu';
         setCurrentUserName(name);
+        const summary = await getJourneySummary(user.id);
+        const level = summary?.level ?? 1;
+        if (mounted) {
+          setJourneyLevel(level);
+          setCanRespondPrayer(isFeatureAvailableForLevel('prayer_respond', level));
+          setCanInteractPrayer(isFeatureAvailableForLevel('prayer_interact', level));
+        }
         await loadPrayedIds(user.id);
         await loadRequests();
         await loadMyRequests(user.id, name);
@@ -203,9 +220,16 @@ export default function PrayerRequestScreen() {
         is_answered: false,
         prayer_count: 0,
       });
-      if (newRequest.isPrivate && (created as any)?.id) {
+      const createdId = (created as any)?.id;
+      if (createdId) {
         try {
-          await notifyAdminsOfPrivatePrayerRequest((created as any).id, newRequest.title.trim());
+          await awardXp(user.id, 'prayer_register', { referenceId: createdId, referenceType: 'prayer_request' });
+          notifyAchievementUnlockIfNew(user.id, 'prayer_streak').catch(() => {});
+        } catch (_) {}
+      }
+      if (newRequest.isPrivate && createdId) {
+        try {
+          await notifyAdminsOfPrivatePrayerRequest(createdId, newRequest.title.trim());
         } catch (_) {}
       }
       setShowNewRequestModal(false);
@@ -237,6 +261,20 @@ export default function PrayerRequestScreen() {
         setMyRequests((prev) =>
           prev.map((r) => (r.id === requestId ? { ...r, prayerCount: newCount } : r))
         );
+        if (hasPrayed) {
+          const req = await getPrayerRequestById(requestId);
+          if (req && req.user_id !== currentUserId) {
+            try {
+              await createNotification({
+                user_id: req.user_id,
+                type: 'prayer',
+                title: 'Alguém orou pelo seu pedido',
+                message: 'Uma pessoa da comunidade orou pelo seu pedido de oração.',
+                action_url: 'prayer_request:' + requestId,
+              });
+            } catch (_) {}
+          }
+        }
       } catch (_) {}
     },
     [currentUserId]
@@ -355,109 +393,78 @@ export default function PrayerRequestScreen() {
       : [styles.container, { opacity: fadeAnim }];
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: COLORS.background,
-          paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-        }}
-      >
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="light-content" />
+      <View style={styles.screen}>
         <ContentWrapper style={containerStyle}>
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <ArrowLeft size={24} color={COLORS.text} />
+          <View style={styles.headerWrap}>
+            <Gradient
+              colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.headerGradientBg}
+            />
+            <TouchableOpacity style={styles.backBtn} onPress={() => (navigation as any).navigate('UserDashboard')} activeOpacity={0.8}>
+              <ArrowLeft size={24} color="#fff" strokeWidth={2} />
             </TouchableOpacity>
-            <View style={styles.headerContent}>
-              <Text style={styles.headerTitle}>Pedidos de Oração</Text>
-              <Text style={styles.headerSubtitle}>Orem uns pelos outros</Text>
-            </View>
-            <TouchableOpacity style={styles.addButton} onPress={() => { setEditingRequest(null); setShowNewRequestModal(true); }}>
-              <Plus size={24} color="#fff" />
+            <Text style={styles.headerTitle}>Pedidos de Oração</Text>
+            <Text style={styles.headerSubtitle}>Orem uns pelos outros</Text>
+            <TouchableOpacity style={styles.addButton} onPress={() => { setEditingRequest(null); setShowNewRequestModal(true); }} activeOpacity={0.9}>
+              <Plus size={24} color="#fff" strokeWidth={2} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tabChip, tab === 'feed' && styles.tabChipActive]}
-              onPress={() => setTab('feed')}
-            >
+            <TouchableOpacity style={[styles.tabChip, tab === 'feed' && styles.tabChipActive]} onPress={() => setTab('feed')} activeOpacity={0.8}>
               <Text style={[styles.tabText, tab === 'feed' && styles.tabTextActive]}>Feed</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabChip, tab === 'mine' && styles.tabChipActive]}
-              onPress={() => setTab('mine')}
-            >
+            <TouchableOpacity style={[styles.tabChip, tab === 'mine' && styles.tabChipActive]} onPress={() => setTab('mine')} activeOpacity={0.8}>
               <Text style={[styles.tabText, tab === 'mine' && styles.tabTextActive]}>Meus pedidos</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.filterContainer}>
-            <TouchableOpacity
-              style={[styles.filterChip, filter === 'all' && styles.filterChipActive]}
-              onPress={() => setFilter('all')}
-            >
+            <TouchableOpacity style={[styles.filterChip, filter === 'all' && styles.filterChipActive]} onPress={() => setFilter('all')} activeOpacity={0.8}>
               <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>Todos</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterChip, filter === 'active' && styles.filterChipActive]}
-              onPress={() => setFilter('active')}
-            >
+            <TouchableOpacity style={[styles.filterChip, filter === 'active' && styles.filterChipActive]} onPress={() => setFilter('active')} activeOpacity={0.8}>
               <Text style={[styles.filterText, filter === 'active' && styles.filterTextActive]}>Ativos</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterChip, filter === 'answered' && styles.filterChipActive]}
-              onPress={() => setFilter('answered')}
-            >
-              <CheckCircle size={16} color={filter === 'answered' ? '#fff' : COLORS.success} />
+            <TouchableOpacity style={[styles.filterChip, filter === 'answered' && styles.filterChipActive]} onPress={() => setFilter('answered')} activeOpacity={0.8}>
+              <CheckCircle size={16} color={filter === 'answered' ? '#fff' : COLORS.success} strokeWidth={2} />
               <Text style={[styles.filterText, filter === 'answered' && styles.filterTextActive]}>Respondidos</Text>
             </TouchableOpacity>
           </View>
           {tab === 'mine' && (
-            <View style={[styles.filterContainer, { marginTop: 0, marginBottom: SPACING.MD }]}>
-              <TouchableOpacity
-                style={[styles.filterChip, visibilityFilter === 'all' && styles.filterChipActive]}
-                onPress={() => setVisibilityFilter('all')}
-              >
+            <View style={styles.visibilityRow}>
+              <TouchableOpacity style={[styles.filterChip, visibilityFilter === 'all' && styles.filterChipActive]} onPress={() => setVisibilityFilter('all')} activeOpacity={0.8}>
                 <Text style={[styles.filterText, visibilityFilter === 'all' && styles.filterTextActive]}>Todos</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterChip, visibilityFilter === 'public' && styles.filterChipActive]}
-                onPress={() => setVisibilityFilter('public')}
-              >
-                <Globe size={14} color={visibilityFilter === 'public' ? '#fff' : COLORS.text} />
+              <TouchableOpacity style={[styles.filterChip, visibilityFilter === 'public' && styles.filterChipActive]} onPress={() => setVisibilityFilter('public')} activeOpacity={0.8}>
+                <Globe size={14} color={visibilityFilter === 'public' ? '#fff' : COLORS.text} strokeWidth={2} />
                 <Text style={[styles.filterText, visibilityFilter === 'public' && styles.filterTextActive]}>Público</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterChip, visibilityFilter === 'private' && styles.filterChipActive]}
-                onPress={() => setVisibilityFilter('private')}
-              >
-                <Lock size={14} color={visibilityFilter === 'private' ? '#fff' : COLORS.text} />
+              <TouchableOpacity style={[styles.filterChip, visibilityFilter === 'private' && styles.filterChipActive]} onPress={() => setVisibilityFilter('private')} activeOpacity={0.8}>
+                <Lock size={14} color={visibilityFilter === 'private' ? '#fff' : COLORS.text} strokeWidth={2} />
                 <Text style={[styles.filterText, visibilityFilter === 'private' && styles.filterTextActive]}>Privado</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
             {isLoading ? (
               <View style={styles.emptyState}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
                 <Text style={styles.emptySubtext}>Carregando pedidos...</Text>
               </View>
             ) : filteredRequests.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Heart size={64} color={COLORS.textLight} />
-                <Text style={styles.emptyText}>Nenhum pedido de oração encontrado</Text>
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIconWrap}>
+                  <Heart size={40} color={COLORS.primary} strokeWidth={1.5} />
+                </View>
+                <Text style={styles.emptyText}>Nenhum pedido de oração</Text>
                 <Text style={styles.emptySubtext}>
-                  {tab === 'mine'
-                    ? 'Você ainda não criou pedidos de oração'
-                    : filter === 'all'
-                    ? 'Seja o primeiro a compartilhar uma necessidade'
-                    : 'Nenhum pedido neste filtro'}
+                  {tab === 'mine' ? 'Você ainda não criou pedidos' : filter === 'all' ? 'Seja o primeiro a compartilhar' : 'Nenhum pedido neste filtro'}
                 </Text>
               </View>
             ) : (
@@ -466,9 +473,11 @@ export default function PrayerRequestScreen() {
                   <PrayerCard
                     request={request}
                     hasPrayed={prayedIds.has(request.id)}
-                    onPray={tab === 'feed' ? handlePray : undefined}
+                    onPray={tab === 'feed' && canInteractPrayer ? handlePray : undefined}
                     onCommentAdded={handleCommentAdded}
                     onCommentDeleted={handleCommentDeleted}
+                    canInteract={canInteractPrayer}
+                    onLockedPress={!canInteractPrayer ? () => { const a = getLockedFeatureAlert('prayer_interact', journeyLevel); if (a) Alert.alert(a.title, a.message, [{ text: 'Entendi' }]); } : undefined}
                   />
                   {tab === 'mine' && (
                     <View style={styles.myRequestActions}>
@@ -490,11 +499,24 @@ export default function PrayerRequestScreen() {
                       </TouchableOpacity>
                       {!request.isAnswered && !request.isPrivate && (
                         <TouchableOpacity
-                          style={styles.myRequestActionBtn}
-                          onPress={() => { setMarkAnsweredRequest(request); setTestimonyText(request.testimony ?? ''); }}
+                          style={[styles.myRequestActionBtn, !canRespondPrayer && { opacity: 0.8 }]}
+                          onPress={() => {
+                            if (canRespondPrayer) {
+                              setMarkAnsweredRequest(request);
+                              setTestimonyText(request.testimony ?? '');
+                            } else {
+                              (() => { const a = getLockedFeatureAlert('prayer_respond', journeyLevel); if (a) Alert.alert(a.title, a.message, [{ text: 'Entendi' }]); })();
+                            }
+                          }}
                         >
-                          <CheckIcon size={18} color={COLORS.success} />
-                          <Text style={[styles.myRequestActionText, { color: COLORS.success }]}>Marcar respondido</Text>
+                          {canRespondPrayer ? (
+                            <CheckIcon size={18} color={COLORS.success} />
+                          ) : (
+                            <Lock size={18} color={COLORS.textSecondary} />
+                          )}
+                          <Text style={[styles.myRequestActionText, canRespondPrayer ? { color: COLORS.success } : { color: COLORS.textSecondary }]}>
+                            Marcar respondido
+                          </Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -509,9 +531,10 @@ export default function PrayerRequestScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={styles.modalContainer}>
+                <View style={styles.modalHandle} />
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>{editingRequest ? 'Editar Pedido' : 'Novo Pedido de Oração'}</Text>
-                  <TouchableOpacity onPress={() => { setShowNewRequestModal(false); setEditingRequest(null); setNewRequest({ title: '', description: '', isPrivate: false, category: 'personal' }); }}>
+                  <Text style={styles.modalTitle}>{editingRequest ? 'Editar pedido' : 'Novo pedido de oração'}</Text>
+                  <TouchableOpacity onPress={() => { setShowNewRequestModal(false); setEditingRequest(null); setNewRequest({ title: '', description: '', isPrivate: false, category: 'personal' }); }} style={styles.modalCloseBtn}>
                     <Text style={styles.modalClose}>✕</Text>
                   </TouchableOpacity>
                 </View>
@@ -604,15 +627,13 @@ export default function PrayerRequestScreen() {
         </Modal>
 
         <Modal visible={!!markAnsweredRequest} transparent animationType="slide">
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1 }}
-          >
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={styles.modalContainer}>
+                <View style={styles.modalHandle} />
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Marcar como respondido</Text>
-                  <TouchableOpacity onPress={() => { setMarkAnsweredRequest(null); setTestimonyText(''); }}>
+                  <TouchableOpacity onPress={() => { setMarkAnsweredRequest(null); setTestimonyText(''); }} style={styles.modalCloseBtn}>
                     <Text style={styles.modalClose}>✕</Text>
                   </TouchableOpacity>
                 </View>
@@ -654,88 +675,49 @@ export default function PrayerRequestScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    ...(Platform.OS === 'web' && {
-      opacity: 0,
-      transition: 'opacity 0.4s ease-out',
-    }),
-  },
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  screen: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1, ...(Platform.OS === 'web' && { opacity: 0, transition: 'opacity 0.4s ease-out' }) },
   visible: { opacity: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.LG,
-    paddingVertical: SPACING.MD,
-  },
-  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerContent: { flex: 1, marginLeft: SPACING.SM },
-  headerTitle: { ...TYPOGRAPHY.h3 },
-  headerSubtitle: { ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...SHADOWS.small,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.LG,
-    marginBottom: SPACING.MD,
-    gap: SPACING.SM,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.MD,
-    paddingVertical: SPACING.SM,
-    borderRadius: BORDER_RADIUS.MD,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.XS,
-  },
-  filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  filterText: { ...TYPOGRAPHY.bodySmall, fontWeight: '600', color: COLORS.text },
-  filterTextActive: { color: '#fff' },
-  tabContainer: { flexDirection: 'row', paddingHorizontal: SPACING.LG, marginBottom: SPACING.MD, gap: SPACING.SM },
-  tabChip: { flex: 1, paddingVertical: SPACING.SM, borderRadius: BORDER_RADIUS.MD, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  headerWrap: { paddingTop: SPACING.LG, paddingBottom: SPACING.XL, paddingHorizontal: SPACING.LG, position: 'relative', overflow: 'hidden' },
+  headerGradientBg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  backBtn: { alignSelf: 'flex-start', marginBottom: 8 },
+  headerTitle: { ...TYPOGRAPHY.h1, color: '#fff', marginBottom: 4 },
+  headerSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.9)', marginBottom: SPACING.MD },
+  addButton: { position: 'absolute', right: SPACING.LG, top: SPACING.LG, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.25)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
+  tabContainer: { flexDirection: 'row', paddingHorizontal: SPACING.LG, marginTop: SPACING.MD, marginBottom: SPACING.SM, gap: 10 },
+  tabChip: { flex: 1, paddingVertical: 12, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', ...SHADOWS.small },
   tabChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  tabText: { ...TYPOGRAPHY.bodySmall, fontWeight: '600', color: COLORS.text },
+  tabText: { fontSize: 14, fontWeight: '700', color: COLORS.text },
   tabTextActive: { color: '#fff' },
+  filterContainer: { flexDirection: 'row', paddingHorizontal: SPACING.LG, marginBottom: SPACING.SM, gap: 8 },
+  visibilityRow: { flexDirection: 'row', paddingHorizontal: SPACING.LG, marginBottom: SPACING.MD, gap: 8 },
+  filterChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, gap: 6, ...SHADOWS.small },
+  filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterText: { fontSize: 13, fontWeight: '600', color: COLORS.text },
+  filterTextActive: { color: '#fff' },
   myRequestCardWrap: { marginBottom: SPACING.MD },
-  myRequestActions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.SM, marginTop: SPACING.SM, marginBottom: SPACING.LG, paddingHorizontal: SPACING.XS },
-  myRequestActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: BORDER_RADIUS.MD, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  myRequestActionText: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
+  myRequestActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: SPACING.SM, marginBottom: SPACING.LG },
+  myRequestActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 16, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  myRequestActionText: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
   scrollView: { flex: 1 },
-  scrollContent: { padding: SPACING.LG },
+  scrollContent: { padding: SPACING.LG, paddingBottom: SPACING.XXL },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.XXL },
-  emptyText: { ...TYPOGRAPHY.h3, marginTop: SPACING.MD, marginBottom: SPACING.XS },
-  emptySubtext: { ...TYPOGRAPHY.body, color: COLORS.textSecondary },
+  emptyCard: { backgroundColor: COLORS.surface, borderRadius: 24, padding: SPACING.XL, alignItems: 'center', marginHorizontal: SPACING.LG, ...SHADOWS.small },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: `${COLORS.primary}15`, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.MD },
+  emptyText: { fontSize: 18, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
+  emptySubtext: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
-  modalContainer: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: BORDER_RADIUS.LG,
-    borderTopRightRadius: BORDER_RADIUS.LG,
-    padding: SPACING.LG,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.LG,
-  },
-  modalTitle: { ...TYPOGRAPHY.h3 },
-  modalClose: { fontSize: 24, color: COLORS.textSecondary },
+  modalContainer: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.LG, maxHeight: '90%' },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginBottom: SPACING.SM },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.LG },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  modalCloseBtn: { padding: 4 },
+  modalClose: { fontSize: 22, color: COLORS.textSecondary, fontWeight: '600' },
   inputLabel: { ...TYPOGRAPHY.body, fontWeight: '600', marginBottom: SPACING.SM },
   input: { ...globalStyles.input, marginBottom: SPACING.MD },
   textArea: { height: 100, paddingTop: SPACING.MD },

@@ -1,7 +1,11 @@
-package com.thiagosc31.FireYouth
+package com.thiagosc31.GuestJovem
+import expo.modules.splashscreen.SplashScreenManager
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -15,7 +19,10 @@ class MainActivity : ReactActivity() {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
-    setTheme(R.style.AppTheme);
+    // setTheme(R.style.AppTheme);
+    // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
+    SplashScreenManager.registerOnActivity(this)
+    // @generated end expo-splashscreen
     super.onCreate(null)
   }
 
@@ -45,6 +52,20 @@ class MainActivity : ReactActivity() {
     * where moving root activities to background instead of finishing activities.
     * @see <a href="https://developer.android.com/reference/android/app/Activity#onBackPressed()">onBackPressed</a>
     */
+  /**
+   * Atrasa o repasse do intent ao delegate para evitar "Tried to access onNewIntent while context is not ready"
+   * (React Native Bridgeless). Sempre atrasa; se decorView for null (ex.: activity em restarte), usa Handler.
+   */
+  override fun onNewIntent(intent: Intent) {
+    val run = { super.onNewIntent(intent) }
+    val view = window?.decorView
+    if (view != null) {
+      view.postDelayed(run, 600L)
+    } else {
+      Handler(Looper.getMainLooper()).postDelayed(run, 600L)
+    }
+  }
+
   override fun invokeDefaultOnBackPressed() {
       if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
           if (!moveTaskToBack(false)) {

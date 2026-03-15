@@ -1,0 +1,5 @@
+# Ignora a pasta android no upload para o EAS.
+# O EAS vai rodar prebuild e gerar android/ na nuvem, evitando
+# o erro "No variants exist" nos módulos React Native autolinked.
+# O app.json já define package "com.thiagosc31.GuestJovem" para o prebuild.
+/android

@@ -1,7 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, 
-  Animated, StatusBar, ActivityIndicator, Dimensions, ImageBackground,
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  StatusBar,
+  ActivityIndicator,
+  Dimensions,
+  ImageBackground,
   Alert as RNAlert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,16 +22,28 @@ const Alert = RNAlert ?? {
     }
   },
 };
-import { Calendar, Sparkles } from 'lucide-react-native';
-import { supabase } from '../../services/supabase';
+import { supabase, createEventRSVP } from '../../services/supabase';
+import { awardXp } from '../../services/spiritualJourney';
+import { notifyAchievementUnlockIfNew } from '../../services/achievementsService';
 
 import EventCard from '../../components/EventCard';
 import Gradient from '../../components/ui/Gradient';
 import { COLORS } from '../../constants/colors';
+import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { SHADOWS } from '../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
+
+/** Considera evento passado se a data+hora de início já foi (horário local). */
+function isEventPast(event: { date?: string; time?: string }): boolean {
+  if (!event?.date) return true;
+  const [y, m, d] = event.date.split('-').map(Number);
+  const timeStr = (event.time || '00:00').trim();
+  const [hh, mm] = timeStr.split(':').map((v) => parseInt(v, 10) || 0);
+  const eventStart = new Date(y, (m || 1) - 1, d || 1, hh, mm, 0, 0);
+  return eventStart.getTime() < Date.now();
+}
 
 const CATEGORIES = [
   { id: 'all', label: 'Todos' },
@@ -84,15 +104,16 @@ export default function EventsScreen() {
     }
   };
 
-  // Confirmar presença (inserir RSVP)
+  // Confirmar presença (inserir RSVP) e conceder XP da Jornada Espiritual
   const doConfirmPresence = async (eventId: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { error } = await supabase
-      .from('event_rsvps')
-      .insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
-    if (error) throw error;
+    await createEventRSVP(eventId, user.id);
     setConfirmedEvents((prev) => [...prev, eventId]);
+    try {
+      await awardXp(user.id, 'event_checkin', { referenceId: eventId, referenceType: 'event' });
+      notifyAchievementUnlockIfNew(user.id, 'event_checkins').catch(() => {});
+    } catch (_) {}
   };
 
   // Cancelar presença (remover RSVP)
@@ -143,12 +164,13 @@ export default function EventsScreen() {
     }
   };
 
-const filteredEvents = (events || []).filter(event => {
-  if (filter === 'all') return true;
-  // Garante que o filtro funcione tanto com 'event_type' quanto 'category'
-  const type = (event.event_type || event.category || '').trim();
-  return type === filter;
-});
+const filteredEvents = (events || [])
+  .filter((event) => !isEventPast(event))
+  .filter((event) => {
+    if (filter === 'all') return true;
+    const type = (event.event_type || event.category || '').trim();
+    return type === filter;
+  });
 
   return (
     <View style={styles.container}>
@@ -156,17 +178,14 @@ const filteredEvents = (events || []).filter(event => {
       
       <Animated.View style={[styles.heroContainer, { transform: [{ translateY: scrollY.interpolate({ inputRange: [0, 250], outputRange: [0, -50], extrapolate: 'clamp' }) }] }]}>
         <ImageBackground source={{ uri: heroImage }} style={styles.heroImage}>
-          <Gradient colors={['rgba(15, 23, 42, 0.2)', 'rgba(15, 23, 42, 0.95)']} style={styles.heroOverlay} />
+          <Gradient colors={[`${COLORS.gradientStart}20`, `${COLORS.primaryDark}E6`]} style={styles.heroOverlay} />
         </ImageBackground>
       </Animated.View>
 
       <SafeAreaView style={styles.fixedHeader} edges={['top']}>
         <View style={styles.headerContent}>
           <View>
-            <View style={styles.row}>
-              <Text style={styles.titleText}>Eventos</Text>
-              <Sparkles size={20} color="#FFD700" style={{ marginLeft: 8 }} />
-            </View>
+            <Text style={styles.titleText}>Eventos</Text>
             <Text style={styles.subtitleText}>Guest Jovem</Text>
           </View>
         </View>
@@ -181,15 +200,19 @@ const filteredEvents = (events || []).filter(event => {
 
         <View style={styles.filtersWrapper}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPadding}>
-            {CATEGORIES.map((cat) => (
-              <TouchableOpacity 
-                key={cat.id} 
-                style={[styles.chip, filter === cat.id && styles.chipActive]} 
-                onPress={() => setFilter(cat.id)}
-              >
-                <Text style={[styles.chipText, filter === cat.id && styles.chipTextActive]}>{cat.label}</Text>
-              </TouchableOpacity>
-            ))}
+            {CATEGORIES.map((cat) => {
+              const isActive = filter === cat.id;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[styles.chip, isActive && styles.chipActive]}
+                  onPress={() => setFilter(cat.id)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{cat.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -223,24 +246,48 @@ const filteredEvents = (events || []).filter(event => {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
-  heroContainer: { position: 'absolute', width: width, height: 300, top: 0 },
+  container: { flex: 1, backgroundColor: COLORS.primaryDark },
+  heroContainer: { position: 'absolute', width: width, height: 280, top: 0 },
   heroImage: { width: '100%', height: '100%' },
   heroOverlay: { flex: 1 },
   fixedHeader: { position: 'absolute', zIndex: 100, width: '100%' },
-  headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 10 },
-  titleText: { fontSize: 32, fontWeight: '900', color: '#fff' },
-  subtitleText: { fontSize: 16, color: 'rgba(255,255,255,0.6)' },
-  row: { flexDirection: 'row', alignItems: 'center' },
+  headerContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.LG, paddingTop: SPACING.SM, gap: SPACING.MD },
+  titleText: { fontSize: 28, fontWeight: '800', color: '#fff' },
+  subtitleText: { fontSize: 15, color: 'rgba(255,255,255,0.75)' },
   scrollBody: { flexGrow: 1 },
-  heroSpacer: { height: 220 },
-  filtersWrapper: { zIndex: 110, marginBottom: -20 },
-  filterPadding: { paddingHorizontal: 24, gap: 10, paddingBottom: 30 },
-  chip: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 25, backgroundColor: 'rgba(30, 41, 59, 0.8)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  chipText: { color: 'rgba(255,255,255,0.6)', fontWeight: '700' },
-  chipTextActive: { color: '#fff' },
-  mainSurface: { backgroundColor: '#F8FAFC', borderTopLeftRadius: 35, borderTopRightRadius: 35, minHeight: height, paddingHorizontal: 20, paddingTop: 30 },
+  heroSpacer: { height: 200 },
+  filtersWrapper: { zIndex: 110, marginBottom: -SPACING.LG },
+  filterPadding: { paddingHorizontal: SPACING.LG, gap: 10, paddingBottom: SPACING.LG, paddingTop: 2 },
+  chip: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    ...SHADOWS.small,
+  },
+  chipActive: {
+    backgroundColor: COLORS.primary,
+    borderWidth: 1.5,
+    borderColor: COLORS.primaryDark,
+    ...SHADOWS.small,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  chipText: {
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    fontSize: 14,
+    letterSpacing: 0.2,
+  },
+  chipTextActive: {
+    color: '#fff',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  mainSurface: { backgroundColor: COLORS.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, minHeight: height, paddingHorizontal: SPACING.LG, paddingTop: SPACING.LG },
   eventsList: { width: '100%' },
-  emptyText: { textAlign: 'center', color: '#64748B', marginTop: 50, fontSize: 16 }
+  emptyText: { textAlign: 'center', color: COLORS.textSecondary, marginTop: 48, fontSize: 16 },
 });

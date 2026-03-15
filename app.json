@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "FireYouth",
+    "name": "Guest Jovem",
     "slug": "FireYouth",
+    "scheme": "guestjovem",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/app-icon.png",
     "platforms": [
       "ios",
       "android",
@@ -13,23 +14,32 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/app-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#D32F2F"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.thiagosc31.GuestJovem",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/app-icon.png",
+        "backgroundColor": "#D32F2F"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.thiagosc31.FireYouth"
+      "package": "com.thiagosc31.GuestJovem"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/app-icon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7666100b-87db-45b3-87d8-fe659cec2b62"
+      }
     }
   }
 }

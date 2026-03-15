@@ -16,7 +16,7 @@ export default function ProgressCard({ title, progress, color, subtitle }: Progr
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} numberOfLines={2}>{title}</Text>
         <Text style={[styles.percentage, { color }]}>{progress}%</Text>
       </View>
       <Progress.Bar
@@ -39,6 +39,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.MD,
     padding: SPACING.MD,
+    overflow: 'hidden',
     ...SHADOWS.small,
   },
   header: {
@@ -46,14 +47,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.SM,
+    minWidth: 0,
   },
   title: {
     ...TYPOGRAPHY.body,
     fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    marginRight: SPACING.SM,
   },
   percentage: {
     ...TYPOGRAPHY.h3,
     fontWeight: '700',
+    flexShrink: 0,
   },
   progressBar: {
     marginBottom: SPACING.SM,

@@ -37,14 +37,28 @@ export default function RegistrationScreen() {
 
     setIsLoading(true);
     try {
+      const { data: alreadyRegistered } = await supabase.rpc('check_event_registration_duplicate', {
+        p_event_id: eventId,
+        p_email: formData.email.trim(),
+      });
+
+      if (alreadyRegistered) {
+        Alert.alert(
+          "Inscrição já realizada",
+          "Este e-mail já está inscrito neste evento. Não é possível inscrever-se novamente."
+        );
+        setIsLoading(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('event_registrations')
         .insert([
           {
             event_id: eventId,
-            full_name: formData.full_name,
-            email: formData.email,
-            phone: formData.phone,
+            full_name: formData.full_name.trim(),
+            email: formData.email.trim(),
+            phone: formData.phone.trim() || null,
           }
         ]);
 

@@ -1,18 +1,25 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet, Animated, Platform, StatusBar, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet, Platform, StatusBar, Modal, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, BookOpen, CheckCircle } from 'lucide-react-native';
-import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ArrowLeft, CheckCircle, Trash2 } from 'lucide-react-native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import Gradient from '../../components/ui/Gradient';
+import { createDevotional, deleteDevotional, supabase } from '../../services/supabase';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles, SHADOWS } from '../../constants/theme';
 import { Devotional } from '../../types/models';
+import { RootStackParamList } from '../../types/navigation';
+
+type CreateDevotionalRouteProp = RouteProp<RootStackParamList, 'CreateDevotional'>;
 
 export default function CreateDevotionalScreen() {
   const navigation = useNavigation();
+  const route = useRoute<CreateDevotionalRouteProp>();
+  const devotionalToEdit = route.params?.devotional;
+
   const [formData, setFormData] = useState({
+    author: '',
     title: '',
     date: '',
     category: 'faith' as const,
@@ -23,20 +30,24 @@ export default function CreateDevotionalScreen() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      setTimeout(() => setIsVisible(true), 10);
-    } else {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: false,
-      }).start();
+    if (devotionalToEdit) {
+      const authorVal = (devotionalToEdit.author && String(devotionalToEdit.author).trim())
+        ? String(devotionalToEdit.author).trim()
+        : (devotionalToEdit.authorName !== undefined && devotionalToEdit.authorName !== '—' ? devotionalToEdit.authorName : '');
+      setFormData({
+        author: authorVal,
+        title: devotionalToEdit.title || '',
+        date: devotionalToEdit.date || '',
+        category: devotionalToEdit.category || 'faith',
+        scripture: devotionalToEdit.scripture || '',
+        content: devotionalToEdit.content || '',
+        reflection: devotionalToEdit.reflection || '',
+        prayerPoints: Array.isArray(devotionalToEdit.prayer_points) ? devotionalToEdit.prayer_points.join('\n') : '',
+      });
     }
-  }, []);
+  }, [devotionalToEdit]);
 
   const categories: Array<{ value: Devotional['category']; label: string }> = [
     { value: 'faith', label: 'Fé' },
@@ -66,77 +77,93 @@ export default function CreateDevotionalScreen() {
         .map((p) => p.trim())
         .filter((p) => p !== '');
 
-      const newDevotional: Devotional = {
-        id: `${Date.now()}`,
-        title: formData.title,
-        date: formData.date,
+      const payload = {
+        title: formData.title.trim(),
+        date: formData.date.trim(),
         category: formData.category,
-        scripture: formData.scripture,
-        content: formData.content,
-        reflection: formData.reflection,
-        prayerPoints: prayerPointsArray,
-        completed: false,
+        scripture: formData.scripture.trim(),
+        content: formData.content.trim(),
+        reflection: formData.reflection.trim(),
+        prayer_points: prayerPointsArray,
+        author: formData.author.trim() || null,
       };
 
-      const existingDevotionals = await AsyncStorage.getItem('devotionals');
-      const devotionals: Devotional[] = existingDevotionals ? JSON.parse(existingDevotionals) : [];
-      devotionals.push(newDevotional);
-      await AsyncStorage.setItem('devotionals', JSON.stringify(devotionals));
-
-      console.log('Devocional criado:', newDevotional);
+      if (devotionalToEdit?.id) {
+        const { error } = await supabase.from('devotionals').update(payload).eq('id', devotionalToEdit.id);
+        if (error) throw error;
+      } else {
+        await createDevotional({ ...payload, author_id: null });
+      }
       setShowSuccessModal(true);
-    } catch (error) {
-      console.error('Erro ao criar devocional:', error);
+    } catch (error: any) {
+      Alert.alert('Erro', error.message ?? 'Não foi possível salvar o devocional.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleDelete = () => {
+    if (!devotionalToEdit?.id) return;
+    Alert.alert(
+      'Excluir devocional',
+      `Deseja realmente excluir "${formData.title}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDevotional(devotionalToEdit.id);
+              navigation.goBack();
+            } catch (error: any) {
+              Alert.alert('Erro', error.message ?? 'Não foi possível excluir.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleSuccessClose = () => {
     setShowSuccessModal(false);
-    setFormData({
-      title: '',
-      date: '',
-      category: 'faith',
-      scripture: '',
-      content: '',
-      reflection: '',
-      prayerPoints: '',
-    });
     navigation.goBack();
   };
 
-  const ContentWrapper = Platform.OS === 'web' ? View : Animated.View;
-  const containerStyle = Platform.OS === 'web'
-    ? [styles.container, isVisible && styles.visible]
-    : [styles.container, { opacity: fadeAnim }];
-
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: COLORS.background, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }}>
-        <ContentWrapper style={containerStyle}>
-          <Gradient
-            colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.header}
-          >
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <ArrowLeft size={24} color="#fff" />
-            </TouchableOpacity>
-            <View style={styles.headerContent}>
-              <BookOpen size={32} color="#fff" />
-              <Text style={styles.headerTitle}>Criar Devocional</Text>
-              <Text style={styles.headerSubtitle}>Compartilhe uma mensagem inspiradora</Text>
-            </View>
-          </Gradient>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      <StatusBar barStyle="light-content" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={{ flex: 1 }}>
+            <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                <ArrowLeft size={24} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{devotionalToEdit ? 'Editar Devocional' : 'Novo Devocional'}</Text>
+            </Gradient>
 
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            scrollEnabled={!isLoading}
-          >
+            <ScrollView
+              contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+              showsVerticalScrollIndicator={false}
+              scrollEnabled={!isLoading}
+            >
+            <View style={styles.formSection}>
+              <Text style={styles.label}>Autor</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Nome do autor do devocional"
+                placeholderTextColor={COLORS.textSecondary}
+                value={formData.author}
+                onChangeText={(text) => setFormData({ ...formData, author: text })}
+                editable={!isLoading}
+              />
+            </View>
+
             <View style={styles.formSection}>
               <Text style={styles.label}>Título *</Text>
               <TextInput
@@ -150,10 +177,10 @@ export default function CreateDevotionalScreen() {
             </View>
 
             <View style={styles.formSection}>
-              <Text style={styles.label}>Data *</Text>
+              <Text style={styles.label}>Data (AAAA-MM-DD) *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="DD/MM/AAAA"
+                placeholder="2025-02-22"
                 placeholderTextColor={COLORS.textSecondary}
                 value={formData.date}
                 onChangeText={(text) => setFormData({ ...formData, date: text })}
@@ -245,6 +272,13 @@ export default function CreateDevotionalScreen() {
               />
             </View>
 
+            {devotionalToEdit?.id && (
+              <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} disabled={isLoading}>
+                <Trash2 size={20} color={COLORS.error} />
+                <Text style={styles.deleteButtonText}>Excluir devocional</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={[
                 styles.submitButton,
@@ -255,77 +289,49 @@ export default function CreateDevotionalScreen() {
               disabled={!isFormValid() || isLoading}
             >
               {isLoading ? (
-                <Text style={styles.submitButtonText}>Criando...</Text>
+                <Text style={styles.submitButtonText}>{devotionalToEdit ? 'Salvando...' : 'Criando...'}</Text>
               ) : (
-                <Text style={styles.submitButtonText}>Criar Devocional</Text>
+                <Text style={styles.submitButtonText}>{devotionalToEdit ? 'Salvar alterações' : 'Criar Devocional'}</Text>
               )}
             </TouchableOpacity>
-          </ScrollView>
-        </ContentWrapper>
+            </ScrollView>
 
-        <Modal visible={showSuccessModal} transparent animationType="fade">
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalContainer}>
-              <CheckCircle size={64} color={COLORS.success} />
-              <Text style={styles.modalTitle}>Devocional Criado!</Text>
-              <Text style={styles.modalMessage}>
-                O devocional "{formData.title}" foi criado com sucesso e está disponível para todos os jovens.
-              </Text>
-              <TouchableOpacity style={styles.modalButton} onPress={handleSuccessClose}>
-                <Text style={styles.modalButtonText}>Concluir</Text>
-              </TouchableOpacity>
-            </View>
+            <Modal visible={showSuccessModal} transparent animationType="fade">
+              <View style={styles.modalBackdrop}>
+                <View style={styles.modalContainer}>
+                  <CheckCircle size={64} color={COLORS.success} />
+                  <Text style={styles.modalTitle}>{devotionalToEdit ? 'Devocional atualizado!' : 'Devocional Criado!'}</Text>
+                  <Text style={styles.modalMessage}>
+                    O devocional "{formData.title}" foi {devotionalToEdit ? 'atualizado' : 'criado'} com sucesso e está disponível para todos os jovens.
+                  </Text>
+                  <TouchableOpacity style={styles.modalButton} onPress={handleSuccessClose}>
+                    <Text style={styles.modalButtonText}>Concluir</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
           </View>
-        </Modal>
-      </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    ...(Platform.OS === 'web' && {
-      opacity: 0,
-      transition: 'opacity 0.4s ease-out',
-    }),
-  },
-  visible: {
-    opacity: 1,
-  },
   header: {
-    paddingHorizontal: SPACING.LG,
-    paddingVertical: SPACING.XL,
+    padding: 20,
+    paddingTop: 50,
     alignItems: 'center',
   },
   backButton: {
     position: 'absolute',
-    top: SPACING.MD,
-    left: SPACING.LG,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  headerContent: {
-    alignItems: 'center',
+    left: 20,
+    top: 55,
   },
   headerTitle: {
-    ...TYPOGRAPHY.h2,
+    fontSize: 20,
+    fontWeight: 'bold',
     color: '#fff',
-    marginTop: SPACING.SM,
-    marginBottom: SPACING.XS,
-  },
-  headerSubtitle: {
-    ...TYPOGRAPHY.body,
-    color: 'rgba(255, 255, 255, 0.9)',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: SPACING.LG,
   },
   formSection: {
     marginBottom: SPACING.LG,
@@ -383,6 +389,23 @@ const styles = StyleSheet.create({
   },
   submitButtonLoading: {
     opacity: 0.7,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    marginTop: SPACING.MD,
+    marginBottom: SPACING.SM,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    borderRadius: BORDER_RADIUS.MD,
+  },
+  deleteButtonText: {
+    color: COLORS.error,
+    fontWeight: '600',
+    fontSize: 14,
   },
   submitButtonText: {
     ...globalStyles.buttonText,

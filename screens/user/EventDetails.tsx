@@ -1,38 +1,90 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Alert } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, Calendar, MapPin, Clock, Info, Users } from 'lucide-react-native';
-import { supabase } from '../../services/supabase'; // Ajuste o caminho se necessário
+import { ChevronLeft, Calendar, MapPin, Clock, CheckCircle } from 'lucide-react-native';
+import { supabase, createEventRSVP } from '../../services/supabase';
 import { COLORS } from '../../constants/colors';
+import { DEFAULT_EVENT_IMAGE_URL } from '../../constants/images';
 
 export default function EventDetails() {
   const route = useRoute();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { eventId } = route.params as { eventId: string };
   
   const [loading, setLoading] = useState(true);
   const [event, setEvent] = useState<any>(null);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     fetchEventDetails();
   }, [eventId]);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!eventId) return;
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: rsvps } = await supabase
+          .from('event_rsvps')
+          .select('event_id')
+          .eq('event_id', eventId)
+          .eq('user_id', user.id);
+        setIsConfirmed(Array.isArray(rsvps) && rsvps.length > 0);
+      })();
+    }, [eventId])
+  );
+
   const fetchEventDetails = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('events') // Nome da sua tabela
+        .from('events')
         .select('*')
         .eq('id', eventId)
         .single();
 
       if (error) throw error;
       setEvent(data);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: rsvps } = await supabase
+          .from('event_rsvps')
+          .select('event_id')
+          .eq('event_id', eventId)
+          .eq('user_id', user.id);
+        setIsConfirmed(Array.isArray(rsvps) && rsvps.length > 0);
+      }
     } catch (error) {
       console.error('Erro ao carregar evento:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConfirmPresence = async () => {
+    if (event?.requires_registration) {
+      if (event?.is_paid) {
+        navigation.navigate('EventPaymentScreen', { eventId: event.id });
+        return;
+      }
+      navigation.navigate('RegistrationScreen', { eventId: event.id });
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setConfirming(true);
+    try {
+      await createEventRSVP(eventId, user.id);
+      setIsConfirmed(true);
+      Alert.alert('Sucesso', 'Sua presença foi confirmada!');
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message ?? 'Não foi possível confirmar.');
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -56,10 +108,11 @@ export default function EventDetails() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* IMAGEM DO EVENTO (Se tiver URL no banco) */}
+        {/* IMAGEM DO EVENTO: padrão quando nenhuma imagem foi adicionada */}
         <Image 
-          source={{ uri: event?.image_url || 'https://via.placeholder.com/800x400' }} 
-          style={styles.eventImage} 
+          source={{ uri: event?.image_url?.trim() ? event.image_url : DEFAULT_EVENT_IMAGE_URL }} 
+          style={styles.eventImage}
+          resizeMode="cover"
         />
 
         <View style={styles.content}>
@@ -88,27 +141,31 @@ export default function EventDetails() {
           </Text>
 
           {/* BOTÃO DE INSCRIÇÃO OU PRESENÇA */}
-          {/* BOTÃO DINÂMICO DE INSCRIÇÃO OU PRESENÇA */}
-          <TouchableOpacity 
-            style={[
-              styles.button, 
-              !event?.requires_registration && { backgroundColor: '#28a745', shadowColor: '#28a745' } 
-            ]}
-            onPress={() => {
-              if (event?.requires_registration) {
-                // Navega para a tela de formulário que vamos criar
-                navigation.navigate('RegistrationScreen', { eventId: event.id });
-              } else {
-                Alert.alert("Sucesso", "Sua presença foi confirmada!");
-              }
-            }}
-          >
-            <Text style={styles.buttonText}>
-              {event?.requires_registration 
-                ? (event.is_paid ? `Garantir Ingresso • R$ ${event.price}` : 'Fazer Inscrição Gratuita')
-                : 'Confirmar Presença'}
-            </Text>
-          </TouchableOpacity>
+          {isConfirmed ? (
+            <View style={[styles.button, styles.buttonConfirmed]}>
+              <CheckCircle size={22} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.buttonText}>Presença confirmada</Text>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={[
+                styles.button, 
+                !event?.requires_registration && { backgroundColor: '#28a745', shadowColor: '#28a745' } 
+              ]}
+              onPress={handleConfirmPresence}
+              disabled={confirming}
+            >
+              {confirming ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>
+                  {event?.requires_registration 
+                    ? (event.is_paid ? `Garantir Ingresso • R$ ${event.price}` : 'Fazer Inscrição Gratuita')
+                    : 'Confirmar Presença'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -134,11 +191,14 @@ const styles = StyleSheet.create({
     padding: 18, 
     borderRadius: 12, 
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 8
   },
+  buttonConfirmed: { backgroundColor: '#28a745', shadowColor: '#28a745' },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });

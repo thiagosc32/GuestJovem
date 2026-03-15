@@ -8,7 +8,8 @@ import {
   TouchableOpacity, 
   Alert, 
   Modal, 
-  StatusBar 
+  StatusBar,
+  ScrollView,
 } from 'react-native';
 import { supabase } from '../../services/supabase';
 import { Users, Trash2, ShieldCheck, X, User, ChevronLeft } from 'lucide-react-native';
@@ -16,6 +17,7 @@ import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import Gradient from '../../components/ui/Gradient';
 import { useNavigation } from '@react-navigation/native';
+import { MINISTRY_FUNCTIONS, getMinistryFunctionLabel, getMinistryFunctionColor } from '../../constants/ministryFunctions';
 
 export default function UserManagementScreen() {
   const navigation = useNavigation();
@@ -24,12 +26,6 @@ export default function UserManagementScreen() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
 
-  const roles = [
-    { id: 'jovem', label: 'Jovem', color: '#64748B' },
-    { id: 'volunteer', label: 'Voluntário', color: '#10B981' },
-    { id: 'staff', label: 'Staff', color: '#F59E0B' },
-    { id: 'admin', label: 'Líder / Admin', color: '#EF4444' }
-  ];
 
   useEffect(() => {
     fetchUsers();
@@ -52,19 +48,17 @@ export default function UserManagementScreen() {
     }
   };
 
-  const updateUserRole = async (newRole: string) => {
+  const updateUserRole = async (ministryFunction: string) => {
     try {
-      const { data, error, count } = await supabase
-  .from('users')
-  .update({ role: newRole })
-  .eq('id', selectedUser.id)
-  .select();
-
-console.log("Linhas afetadas:", data?.length);
-if (error) console.error("Erro detalhado:", error);
-
+      const updates: { ministry_function: string; role?: string } = { ministry_function: ministryFunction };
+      if (ministryFunction === 'admin') {
+        updates.role = 'admin';
+      } else {
+        updates.role = 'user';
+      }
+      const { error } = await supabase.from('users').update(updates).eq('id', selectedUser.id).select();
       if (error) throw error;
-      Alert.alert('Sucesso', 'Cargo atualizado!');
+      Alert.alert('Sucesso', 'Função atualizada!');
       setRoleModalVisible(false);
       fetchUsers();
     } catch (error: any) {
@@ -81,9 +75,9 @@ if (error) console.error("Erro detalhado:", error);
         <View style={{ flex: 1 }}>
           <Text style={styles.userName}>{item.name || 'Sem Nome'}</Text>
           <Text style={styles.userEmail}>{item.email}</Text>
-          <View style={[styles.roleBadge, { backgroundColor: roles.find(r => r.id === item.role)?.color + '15' }]}>
-            <Text style={[styles.roleText, { color: roles.find(r => r.id === item.role)?.color }]}>
-              {(item.role || 'jovem').toUpperCase()}
+          <View style={[styles.roleBadge, { backgroundColor: getMinistryFunctionColor(item.ministry_function ?? item.role) + '25' }]}>
+            <Text style={[styles.roleText, { color: getMinistryFunctionColor(item.ministry_function ?? item.role) }]}>
+              {getMinistryFunctionLabel(item.ministry_function ?? item.role ?? 'jovem')}
             </Text>
           </View>
         </View>
@@ -129,19 +123,21 @@ if (error) console.error("Erro detalhado:", error);
         />
       )}
 
-      {/* MODAL DE CARGOS */}
+      {/* MODAL DE FUNÇÕES */}
       <Modal visible={roleModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Alterar Nível</Text>
+              <Text style={styles.modalTitle}>Alterar Função</Text>
               <TouchableOpacity onPress={() => setRoleModalVisible(false)}><X size={24} color="#000" /></TouchableOpacity>
             </View>
-            {roles.map((role) => (
-              <TouchableOpacity key={role.id} style={styles.roleOption} onPress={() => updateUserRole(role.id)}>
-                <Text style={[styles.roleOptionText, { color: role.color }]}>{role.label}</Text>
-              </TouchableOpacity>
-            ))}
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {MINISTRY_FUNCTIONS.map((fn) => (
+                <TouchableOpacity key={fn.id} style={styles.roleOption} onPress={() => updateUserRole(fn.id)}>
+                  <Text style={[styles.roleOptionText, { color: fn.color }]}>{fn.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -168,9 +164,10 @@ const styles = StyleSheet.create({
   actionBtn: { padding: 10, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9' },
   empty: { textAlign: 'center', marginTop: 50, color: '#94A3B8' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#fff', width: '100%', borderRadius: 24, padding: 24 },
+  modalContent: { backgroundColor: '#fff', width: '100%', maxHeight: '80%', borderRadius: 24, padding: 24 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800' },
+  modalScroll: { maxHeight: 400 },
   roleOption: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'center' },
   roleOptionText: { fontSize: 16, fontWeight: '700' }
 });
