@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, Flame } from 'lucide-react-native';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { signIn, signUp, getGoogleSignInUrl, getCurrentUser, resetPassword, GOOGLE_REDIRECT_SCHEME } from '../services/supabase';
+import { signIn, signUp, getGoogleSignInUrl, getCurrentUser, resetPassword, setSessionFromOAuthUrl, ensureUserProfileForOAuth } from '../services/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS } from '../constants/colors';
@@ -232,15 +232,25 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     setError('');
     setIsGoogleLoading(true);
     try {
-      // No celular usa a URL do app (exp:// no Expo Go ou guestjovem:// no build) para o redirect abrir o app
-      const redirectTo = Platform.OS !== 'web' ? Linking.createURL('google-auth') : undefined;
+      // Web: redirect de volta para o mesmo domínio (guestjovem.com ou localhost). Mobile: deep link guestjovem://
+      const redirectTo =
+        Platform.OS === 'web' && typeof window !== 'undefined'
+          ? window.location.origin + '/'
+          : Platform.OS !== 'web'
+            ? 'guestjovem://google-auth'
+            : undefined;
       if (__DEV__ && redirectTo) {
-        console.log('[Guest Jovem] URL de redirect do Google. Adicione no Supabase (Auth → URL Configuration → Redirect URLs):', redirectTo);
+        console.log('[Guest Jovem] Redirect URL. Adicione no Supabase (Auth → URL Configuration → Redirect URLs):', redirectTo);
       }
       const url = await getGoogleSignInUrl(redirectTo);
       const result = await WebBrowser.openAuthSessionAsync(url, redirectTo ?? undefined);
       if (result.type === 'success' && result.url) {
-        // O redirect será tratado no App.tsx (Linking); aqui só fechamos e o onAuthStateChange atualiza.
+        await setSessionFromOAuthUrl(result.url);
+        await ensureUserProfileForOAuth();
+        const user = await getCurrentUser();
+        if (user) {
+          onAuthenticate((user as { role?: 'admin' | 'user' }).role ?? 'user');
+        }
         return;
       }
       if (result.type === 'cancel') return;
@@ -566,6 +576,11 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                       <Text style={styles.googleButtonText}>Entrar com Google</Text>
                     )}
                   </TouchableOpacity>
+                  {Platform.OS === 'web' && (
+                    <Text style={styles.googleHint}>
+                      Login seguro. O navegador pode pedir para abrir o site de autenticação.
+                    </Text>
+                  )}
                 </View>
               </Animated.View>
 
@@ -870,6 +885,12 @@ const styles = StyleSheet.create({
   },
   googleButtonDisabled: { opacity: 0.7 },
   googleButtonText: { fontSize: 16, fontWeight: '700', color: '#333' },
+  googleHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'center',
+  },
 
   quickAccess: {
     marginTop: 30,

@@ -117,6 +117,22 @@ O aparelho já tem o app instalado com outra assinatura (ex.: build local vs EAS
 - [ ] Hospedar a pasta `dist/` na Vercel, Netlify ou outro.
 - [ ] Se usar check-in de visitantes, configure `EXPO_PUBLIC_WEB_URL` com a URL final do site.
 
+**Login e criação de conta na web (guestjovem.com + Google)**
+
+Para o “Entrar com Google” e “Criar conta” funcionarem na web:
+
+1. **Supabase Dashboard** → **Authentication** → **URL Configuration**:
+   - **Site URL:** `https://guestjovem.com` (ou a URL onde o app web está hospedado).
+   - **Redirect URLs:** adicione exatamente:
+     - `https://guestjovem.com/`
+     - `https://guestjovem.com/**`
+     - Se usar outro domínio (ex.: Vercel), adicione também `https://seu-dominio.vercel.app/` e `https://seu-dominio.vercel.app/**`.
+   - Em desenvolvimento local, adicione `http://localhost:8081/` e `http://localhost:8081/**` (ou a porta que o Expo usar).
+
+2. **Mensagem “Prosseguir para … supabase.co”**  
+   Ao clicar em “Entrar com Google”, o navegador pode mostrar algo como “Prosseguir para ytfysvzkcdwfuftwwwyp.supabase.co”. Isso é **normal**: o login é feito nos servidores do Supabase (parceiro de autenticação). O usuário só é redirecionado para o seu domínio depois do login.  
+   Para no futuro mostrar um domínio próprio (ex.: “Prosseguir para auth.guestjovem.com”), é possível usar **Custom Auth Domain** do Supabase (recurso de planos pagos) ou self-hosted Auth; não é obrigatório para o fluxo funcionar.
+
 ### 7. Conferências finais
 
 - [ ] Testar o app em dispositivo real (Android e/ou iOS) antes de enviar às lojas.
