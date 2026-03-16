@@ -324,6 +324,14 @@ export default function App() {
     if (!isSupabaseConfigured()) return;
     const handleOAuthRedirect = async (url: string | null) => {
       if (!url || !isOAuthCallbackUrl(url)) return;
+      // PWA/atalho: se esta aba for uma popup do login Google, enviamos a URL para o atalho (opener) e fechamos
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.opener) {
+        try {
+          window.opener.postMessage({ type: 'OAUTH_CALLBACK', url }, window.location.origin);
+        } catch (_) {}
+        window.close();
+        return;
+      }
       try {
         await setSessionFromOAuthUrl(url);
         await ensureUserProfileForOAuth();

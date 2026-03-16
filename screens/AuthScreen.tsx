@@ -228,11 +228,22 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     }
   };
 
+  const popupCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (popupCheckRef.current) {
+        clearInterval(popupCheckRef.current);
+        popupCheckRef.current = null;
+      }
+    };
+  }, []);
+
   const handleGoogleSignIn = async () => {
     setError('');
     setIsGoogleLoading(true);
     try {
-      // Web: redirect de volta para o mesmo domínio (guestjovem.com ou localhost). Mobile: deep link guestjovem://
+      // Web (PWA/atalho): abrir login em popup para o retorno ficar no atalho, não no navegador
       const redirectTo =
         Platform.OS === 'web' && typeof window !== 'undefined'
           ? window.location.origin + '/'
@@ -243,6 +254,49 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
         console.log('[Guest Jovem] Redirect URL. Adicione no Supabase (Auth → URL Configuration → Redirect URLs):', redirectTo);
       }
       const url = await getGoogleSignInUrl(redirectTo);
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const origin = window.location.origin;
+        const popup = window.open(url, 'oauth_guestjovem', 'width=520,height=700,scrollbars=yes');
+        if (!popup) {
+          setError('Permita pop-ups para este site e tente novamente.');
+          setIsGoogleLoading(false);
+          return;
+        }
+        const onMessage = async (event: MessageEvent) => {
+          if (event.origin !== origin || event.data?.type !== 'OAUTH_CALLBACK' || !event.data?.url) return;
+          window.removeEventListener('message', onMessage);
+          if (popupCheckRef.current) {
+            clearInterval(popupCheckRef.current);
+            popupCheckRef.current = null;
+          }
+          try {
+            await setSessionFromOAuthUrl(event.data.url);
+            await ensureUserProfileForOAuth();
+            const user = await getCurrentUser();
+            if (user) {
+              onAuthenticate((user as { role?: 'admin' | 'user' }).role ?? 'user');
+            }
+          } catch (e: any) {
+            setError(e?.message ?? 'Erro ao concluir login.');
+          } finally {
+            setIsGoogleLoading(false);
+          }
+        };
+        window.addEventListener('message', onMessage);
+        popupCheckRef.current = setInterval(() => {
+          if (popup.closed) {
+            if (popupCheckRef.current) {
+              clearInterval(popupCheckRef.current);
+              popupCheckRef.current = null;
+            }
+            window.removeEventListener('message', onMessage);
+            setIsGoogleLoading(false);
+          }
+        }, 300);
+        return;
+      }
+
       const result = await WebBrowser.openAuthSessionAsync(url, redirectTo ?? undefined);
       if (result.type === 'success' && result.url) {
         await setSessionFromOAuthUrl(result.url);
