@@ -295,10 +295,10 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   };
 
   const handleVerifySignUpOtp = async () => {
-    const code = otpCode.replace(/\D/g, '').slice(0, 6);
+    const code = otpCode.replace(/\D/g, '').slice(0, 8);
     const emailTrim = email.trim();
-    if (code.length !== 6) {
-      setError('Digite o código de 6 dígitos que você recebeu por e-mail.');
+    if (code.length < 6) {
+      setError('Digite o código enviado por e-mail (geralmente 6 dígitos).');
       return;
     }
     if (!emailTrim) {
@@ -745,9 +745,9 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                             placeholder="000000"
                             placeholderTextColor="#888"
                             value={otpCode}
-                            onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                            onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 8)); setError(''); }}
                             keyboardType="number-pad"
-                            maxLength={6}
+                            maxLength={8}
                             editable={!isLoading}
                             autoFocus
                           />

@@ -122,6 +122,14 @@ O alias `sendEmailOtp` aponta para `sendSignUpEmailOtp` (compatibilidade).
 1. **Authentication** → **Email Templates** → **Magic Link** (ou equivalente).
 2. Incluir **`{{ .Token }}`** no corpo para enviar o código de 6 dígitos.
 3. Se usar `{{ .ConfirmationURL }}` em vez de `{{ .Token }}`, o usuário recebe link em vez de código — o fluxo do app espera código digitável.
+4. O fluxo usa `signInWithOtp`: o template que vale é o de **Magic Link**, não só o de “Confirm signup”. Se você colocar `{{ .Token }}` só em “Confirm signup”, o e-mail de OTP pode não bater com a verificação.
+
+### 5.4 Erro “Token has expired or is invalid”
+
+- **Só o último código vale:** se tocar em **Enviar código** ou **Reenviar** de novo, o código anterior deixa de funcionar.
+- **Template:** use **Magic Link** com `{{ .Token }}` (código). Evite misturar link e código no mesmo fluxo sem testar.
+- **E-mail corporativo:** antivírus às vezes “abre” o link do e-mail e **consome** o token antes do usuário — teste com Gmail/outro provedor.
+- **App:** no **iOS/Android** o cliente usa `flowType: 'implicit'` para reduzir conflito entre PKCE e OTP de 6 dígitos; a verificação tenta `type: 'email'` e depois `type: 'signup'` conforme o template do projeto no Supabase.
 
 ---
 

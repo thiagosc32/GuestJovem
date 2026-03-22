@@ -59,6 +59,12 @@ function createSupabaseClientOnce(url: string, key: string): ReturnType<typeof c
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: Platform.OS === 'web',
+        /**
+         * No iOS/Android, PKCE + OTP por e-mail (6 dígitos) pode retornar
+         * "Token has expired or is invalid". Implicit costuma alinhar com verifyOtp({ type: 'email' }).
+         * Na web mantemos o padrão da lib (PKCE) para OAuth/PWA.
+         */
+        ...(Platform.OS !== 'web' ? { flowType: 'implicit' as const } : {}),
       },
     });
     if (Platform.OS !== 'web') {
@@ -188,17 +194,54 @@ export const sendSignUpEmailOtp = async (email: string): Promise<void> => {
 /** @deprecated Use sendSignUpEmailOtp (código só no cadastro). */
 export const sendEmailOtp = sendSignUpEmailOtp;
 
+/** Remove espaços e caracteres invisíveis; extrai sequência numérica (6–8 dígitos) do código. */
+function normalizeEmailOtpToken(raw: string): string {
+  const t = raw.replace(/\u200B/g, '').trim().replace(/\s+/g, '');
+  const digits = t.replace(/\D/g, '');
+  if (digits.length >= 6) return digits.slice(0, 8);
+  return t;
+}
+
+function shouldRetryVerifyOtpWithOtherType(err: { message?: string; code?: string; status?: number } | null): boolean {
+  if (!err) return false;
+  const msg = (err.message ?? '').toLowerCase();
+  if (msg.includes('rate') || msg.includes('too many')) return false;
+  return (
+    msg.includes('expired') ||
+    msg.includes('invalid') ||
+    err.code === 'otp_expired' ||
+    err.status === 400 ||
+    err.status === 401
+  );
+}
+
 /**
- * Verifica o código enviado no cadastro; inicia sessão temporária até definir senha e nome.
+ * Verifica o código enviado no cadastro; inicia sessão.
+ * Tenta `type: 'email'` (template Magic Link com {{ .Token }}) e, se falhar, `signup` (template "Confirm signup" com {{ .Token }}).
  */
 export const verifyEmailOtp = async (email: string, token: string): Promise<void> => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { error } = await supabaseClient.auth.verifyOtp({
-    email: email.trim().toLowerCase(),
-    token: token.trim(),
-    type: 'email',
-  });
-  if (error) throw error;
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedToken = normalizeEmailOtpToken(token);
+  if (normalizedToken.length < 6) {
+    throw new Error('Digite o código completo enviado por e-mail (geralmente 6 dígitos).');
+  }
+
+  const tryTypes = ['email', 'signup'] as const;
+  let lastError: { message?: string; code?: string; status?: number } | null = null;
+
+  for (const type of tryTypes) {
+    const { error } = await supabaseClient.auth.verifyOtp({
+      email: normalizedEmail,
+      token: normalizedToken,
+      type,
+    });
+    if (!error) return;
+    lastError = error;
+    if (!shouldRetryVerifyOtpWithOtherType(error)) break;
+  }
+
+  if (lastError) throw lastError;
 };
 
 /**
