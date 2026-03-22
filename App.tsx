@@ -10,9 +10,16 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { Home, Users, Calendar, Bell, BarChart3, User, BookOpen, MessageCircle, Sparkles, ListChecks } from 'lucide-react-native';
 import CustomDrawerContent from './components/navigation/CustomDrawerContent';
 import { getCurrentUser, supabase, isSupabaseConfigured, setSessionFromOAuthUrl, ensureUserProfileForOAuth, GOOGLE_REDIRECT_SCHEME } from './services/supabase';
+import UpdatePasswordScreen from './screens/UpdatePasswordScreen';
 
-const isOAuthCallbackUrl = (url: string) =>
-  url.startsWith(GOOGLE_REDIRECT_SCHEME) || (url.includes('#') && url.includes('access_token='));
+/** Link do Google OAuth (não confundir com recuperação de senha: type=recovery). */
+const isGoogleOAuthCallbackUrl = (url: string) =>
+  url.startsWith(GOOGLE_REDIRECT_SCHEME) ||
+  (url.includes('#') && url.includes('access_token=') && !url.includes('type=recovery'));
+
+/** Link do e-mail "esqueci a senha" — abre sessão de recuperação (não é login completo). */
+const isPasswordRecoveryUrl = (url: string) =>
+  url.includes('type=recovery') && url.includes('access_token=');
 
 // IMPORTS DE TELAS EXISTENTES
 import AuthScreen from './screens/AuthScreen';
@@ -290,12 +297,25 @@ function UserDrawerNavigator() {
   );
 }
 
+function isRecoveryHashOnWeb(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  try {
+    const h = window.location.hash?.substring(1) ?? '';
+    if (!h) return false;
+    return new URLSearchParams(h).get('type') === 'recovery';
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [supabaseRetry, setSupabaseRetry] = useState(0);
+  /** Link de redefinição de senha: mostrar tela de nova senha em vez do app logado. */
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(isRecoveryHashOnWeb);
 
   // No Android o Constants.expoConfig.extra às vezes só fica disponível após a primeira tela; reavaliar até 5 vezes
   useEffect(() => {
@@ -312,7 +332,14 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecoveryMode(true);
+        setUserRole(null);
+        setIsAuthenticated(false);
+        return;
+      }
       if (event === 'SIGNED_OUT' || !session) {
+        setPasswordRecoveryMode(false);
         setUserRole(null);
         setIsAuthenticated(false);
       }
@@ -322,9 +349,22 @@ export default function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
-    const handleOAuthRedirect = async (url: string | null) => {
-      if (!url || !isOAuthCallbackUrl(url)) return;
-      // PWA/atalho: se esta aba for uma popup do login Google, enviamos a URL para o atalho (opener) e fechamos
+    const handleDeepLink = async (url: string | null) => {
+      if (!url) return;
+      // Redefinição de senha: mesmo formato de hash com tokens, mas type=recovery — não tratar como Google OAuth
+      if (isPasswordRecoveryUrl(url)) {
+        try {
+          await setSessionFromOAuthUrl(url);
+          setPasswordRecoveryMode(true);
+          setUserRole(null);
+          setIsAuthenticated(false);
+        } catch (e) {
+          console.error('Recovery link error:', e);
+        }
+        return;
+      }
+      if (!isGoogleOAuthCallbackUrl(url)) return;
+      // PWA/atalho: popup do login Google envia URL ao opener e fecha
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.opener) {
         try {
           window.opener.postMessage({ type: 'OAUTH_CALLBACK', url }, window.location.origin);
@@ -344,8 +384,8 @@ export default function App() {
         console.error('OAuth callback error:', e);
       }
     };
-    Linking.getInitialURL().then(handleOAuthRedirect);
-    const sub = Linking.addEventListener('url', ({ url }) => handleOAuthRedirect(url));
+    Linking.getInitialURL().then(handleDeepLink);
+    const sub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
     return () => sub.remove();
   }, []);
 
@@ -355,6 +395,18 @@ export default function App() {
       return;
     }
     try {
+      let recovery = passwordRecoveryMode || isRecoveryHashOnWeb();
+      if (!recovery) {
+        const initialUrl = await Linking.getInitialURL();
+        if (initialUrl && isPasswordRecoveryUrl(initialUrl)) recovery = true;
+      }
+      if (recovery) {
+        setPasswordRecoveryMode(true);
+        setUserRole(null);
+        setIsAuthenticated(false);
+        return;
+      }
+
       const user = await getCurrentUser();
       if (user) {
         setUserRole((user as { role?: 'admin' | 'user' }).role ?? null);
@@ -411,7 +463,28 @@ export default function App() {
           }}
         >
           <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {!isAuthenticated ? (
+            {passwordRecoveryMode ? (
+              <Stack.Screen name="UpdatePassword">
+                {() => (
+                  <UpdatePasswordScreen
+                    onComplete={(role) => {
+                      setPasswordRecoveryMode(false);
+                      setUserRole(role);
+                      setIsAuthenticated(true);
+                      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hash) {
+                        try {
+                          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+                        } catch (_) {}
+                      }
+                    }}
+                    onCancel={() => {
+                      setPasswordRecoveryMode(false);
+                      supabase.auth.signOut();
+                    }}
+                  />
+                )}
+              </Stack.Screen>
+            ) : !isAuthenticated ? (
               <>
                 <Stack.Screen name="Auth">
                   {(props) => (

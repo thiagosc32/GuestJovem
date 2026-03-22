@@ -19,6 +19,7 @@ import * as WebBrowser from 'expo-web-browser';
 import {
   signIn,
   signUp,
+  signOut,
   getGoogleSignInUrl,
   getCurrentUser,
   resetPassword,
@@ -263,21 +264,41 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     setIsLoading(true);
     try {
       const data = await signUp(email.trim(), password, name.trim());
-      if (data.session) {
-        const profile = await getCurrentUser();
-        const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
-        onAuthenticate(role);
-      } else {
+      const user = data.user;
+      const confirmed = Boolean(user?.email_confirmed_at);
+
+      // Sem confirmação de e-mail no Auth: o Supabase pode devolver sessão mesmo assim — não entrar até confirmar.
+      if (data.session && user && !confirmed) {
+        await signOut();
         setSuccessMessage(
           `Enviamos um e-mail de confirmação para ${email.trim()}. Abra o link no e-mail para ativar a conta e depois faça login aqui.`
         );
         setError('');
+        return;
       }
+
+      // Projeto com "Confirm email" desligado: sessão + e-mail já considerado confirmado — entra direto.
+      if (data.session && user && confirmed) {
+        const profile = await getCurrentUser();
+        const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
+        onAuthenticate(role);
+        return;
+      }
+
+      // Fluxo normal: sem sessão até clicar no link do e-mail
+      setSuccessMessage(
+        `Enviamos um e-mail de confirmação para ${email.trim()}. Abra o link no e-mail para ativar a conta e depois faça login aqui.`
+      );
+      setError('');
     } catch (err: any) {
       console.error('Sign up error:', err);
       const msg = err?.message ?? '';
       if (msg.toLowerCase().includes('already registered') || msg.includes('User already registered')) {
         setError('Este e-mail já está cadastrado. Tente entrar ou use outro e-mail.');
+      } else if (msg.includes('Database error saving new user')) {
+        setError(
+          'Erro ao criar perfil no banco (muitas vezes e-mail duplicado órfão). Aplique a migração 20250319000000 no Supabase ou veja docs/TROUBLESHOOTING_AUTH_DATABASE_ERROR.md.'
+        );
       } else {
         setError(err?.message ?? 'Não foi possível concluir o cadastro. Tente novamente.');
       }

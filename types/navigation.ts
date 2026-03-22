@@ -7,6 +7,7 @@
 
 export type RootStackParamList = {
   Auth: undefined;
+  UpdatePassword: undefined;
   VisitorCheckIn: { eventId: string };
   AdminTabs: undefined;
   UserTabs: undefined;

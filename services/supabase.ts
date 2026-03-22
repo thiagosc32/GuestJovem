@@ -185,8 +185,8 @@ export const signUp = async (email: string, password: string, name: string) => {
   });
   if (error) throw error;
 
-  // Com sessão imediata (confirmação de e-mail desativada): garante perfil se o trigger não existir no projeto.
-  if (data.session && data.user) {
+  // Só cria linha em `users` no cliente se já houver sessão **e** e-mail confirmado (projeto sem "Confirm email").
+  if (data.session && data.user?.email_confirmed_at) {
     const { data: existing } = await supabaseClient.from('users').select('id').eq('id', data.user.id).maybeSingle();
     if (!existing) {
       const { error: profileError } = await supabaseClient.from('users').insert({

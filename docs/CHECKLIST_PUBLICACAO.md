@@ -42,7 +42,8 @@ Se ao abrir o app no celular aparecer **"localhost está inacessível"**, é por
 ### E-mail (SMTP Gmail no Supabase)
 
 - [ ] No **Supabase** → Project Settings → Auth → **SMTP**: Gmail com **senha de app** (não a senha da conta). Credenciais **só no Dashboard**, nunca no código.
-- [ ] **Authentication → URL Configuration**: **Redirect URLs** incluem a URL do site (`EXPO_PUBLIC_WEB_URL`), `guestjovem://**` e URLs de preview se necessário.
+- [ ] **Authentication → Providers → Email**: ative **Confirm email** para o cadastro exigir o link no e-mail (e não entrar direto no app).
+- [ ] **Authentication → URL Configuration**: **Redirect URLs** incluem a URL do site (`EXPO_PUBLIC_WEB_URL`), `guestjovem://**` e URLs de preview se necessário. O link de **redefinir senha** deve abrir essa URL (o app mostra a tela **Nova senha** quando o link contém `type=recovery`).
 - Guia passo a passo: **[SUPABASE_SMTP_GMAIL.md](./SUPABASE_SMTP_GMAIL.md)**.
 
 **Se o app abrir com tela branca ou mensagem "Supabase não configurado" mesmo após gerar build no EAS depois de configurar as variáveis:**
