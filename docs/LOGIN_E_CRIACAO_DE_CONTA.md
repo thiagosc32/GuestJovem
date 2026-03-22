@@ -99,15 +99,12 @@ O código de 6 dígitos é usado **apenas na aba Cadastrar**, para confirmar o e
 
 ### 5.1 Fluxo na tela
 
-1. Aba **Cadastrar** → usuário informa **E-mail** e toca em **Enviar código**.
-2. Recebe o código por e-mail; informa os **6 dígitos** e toca em **Verificar código**.
-3. Em sucesso: mensagem "E-mail confirmado! Agora defina seu nome e senha."; campos **E-mail** (somente leitura), **Nome completo**, **Senha** e **Confirmar senha**.
-4. Validações finais:
-   - Nome não vazio.
-   - Senha com **mínimo 6 caracteres**.
-   - **Senha** e **Confirmar senha** devem ser iguais.
-5. **Criar conta** chama `setPasswordAndNameAfterSignUpOtp(name, password)` e em seguida `onAuthenticate(role)`.
-6. Se o usuário mudar para **Entrar** no meio do cadastro (após código ou na etapa de senha), a sessão OTP é encerrada com `signOut()` para não deixar conta “pela metade”.
+1. Aba **Cadastrar** — **Passo 1:** preencher **Nome completo**, **E-mail**, **Senha** e **Confirmar senha**; tocar em **Continuar** (valida tudo).
+2. **Passo 2:** tela “Quase lá” com resumo do e-mail e nome; tocar em **Enviar código** (só aparece depois do passo 1).
+3. Após o envio, aparece o campo do **código de 6 dígitos** e o botão **Concluir cadastro** (verifica o código, define senha/nome no Auth e em `users`).
+4. **Reenviar código** e **Alterar meus dados** (volta ao passo 1) ficam disponíveis na etapa 2.
+5. Validações no passo 1: nome, e-mail válido, senha mínima de 6 caracteres, senhas iguais.
+6. Se o usuário mudar para **Entrar** durante o passo 2, chama-se `signOut()` se houver sessão pendente.
 
 ### 5.2 Funções no serviço
 

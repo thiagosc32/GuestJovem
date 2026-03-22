@@ -54,8 +54,9 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  /** Cadastro: e-mail → código → nome + senha + confirmar senha */
-  const [signUpStep, setSignUpStep] = useState<'email' | 'code' | 'details'>('email');
+  /** Cadastro: formulário completo → enviar código → verificar código */
+  const [signUpStep, setSignUpStep] = useState<'form' | 'code'>('form');
+  const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [passwordConfirm, setPasswordConfirm] = useState('');
@@ -226,16 +227,56 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     }
   };
 
-  const handleSendSignUpOtp = async () => {
+  const validateSignUpFormFields = (): boolean => {
+    const nameTrim = name.trim();
     const emailTrim = email.trim();
+    if (!nameTrim) {
+      setShowValidationErrors(true);
+      setError('Informe seu nome completo.');
+      return false;
+    }
     if (!emailTrim) {
       setShowValidationErrors(true);
       setError('Digite seu e-mail.');
-      return;
+      return false;
     }
     if (!isValidEmail(emailTrim)) {
       setShowValidationErrors(true);
       setError('Informe um e-mail válido.');
+      return false;
+    }
+    if (!password.trim()) {
+      setShowValidationErrors(true);
+      setError('Defina uma senha.');
+      return false;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setShowValidationErrors(true);
+      setError(`A senha deve ter no mínimo ${MIN_PASSWORD_LENGTH} caracteres.`);
+      return false;
+    }
+    if (password !== passwordConfirm) {
+      setShowValidationErrors(true);
+      setError('As senhas não coincidem. Digite novamente.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleContinueSignUpForm = () => {
+    if (!validateSignUpFormFields()) return;
+    setShowValidationErrors(false);
+    setError('');
+    setSuccessMessage('');
+    setSignUpStep('code');
+    setOtpSent(false);
+    setOtpCode('');
+  };
+
+  const handleSendSignUpOtp = async () => {
+    const emailTrim = email.trim();
+    if (!emailTrim || !isValidEmail(emailTrim)) {
+      setError('E-mail inválido. Volte e corrija seus dados.');
       return;
     }
     setError('');
@@ -243,9 +284,9 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     setIsSendingOtp(true);
     try {
       await sendSignUpEmailOtp(emailTrim);
-      setSignUpStep('code');
+      setOtpSent(true);
       setOtpCode('');
-      setSuccessMessage('Código enviado! Verifique seu e-mail e digite os 6 dígitos.');
+      setSuccessMessage('Código enviado! Verifique seu e-mail e digite os 6 dígitos abaixo.');
     } catch (err: any) {
       setError(err?.message ?? 'Não foi possível enviar o código. Tente novamente.');
     } finally {
@@ -261,59 +302,25 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
       return;
     }
     if (!emailTrim) {
-      setError('E-mail não encontrado. Volte e informe o e-mail.');
+      setError('E-mail não encontrado.');
       return;
     }
-    setError('');
-    setIsLoading(true);
-    try {
-      await verifyEmailOtp(emailTrim, code);
-      await ensureUserProfileForOAuth();
-      setSignUpStep('details');
-      setPassword('');
-      setPasswordConfirm('');
-      setSuccessMessage('E-mail confirmado! Agora defina seu nome e senha.');
-    } catch (err: any) {
-      setError(err?.message ?? 'Código inválido ou expirado. Tente novamente ou solicite um novo.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCompleteSignUp = async () => {
-    const nameTrim = name.trim();
-    if (!nameTrim) {
-      setShowValidationErrors(true);
-      setError('Informe seu nome completo.');
+    if (!validateSignUpFormFields()) {
+      setError('Dados do cadastro incompletos. Volte e preencha novamente.');
       return;
     }
-    if (!password.trim()) {
-      setShowValidationErrors(true);
-      setError('Defina uma senha.');
-      return;
-    }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setShowValidationErrors(true);
-      setError(`A senha deve ter no mínimo ${MIN_PASSWORD_LENGTH} caracteres.`);
-      return;
-    }
-    if (password !== passwordConfirm) {
-      setShowValidationErrors(true);
-      setError('As senhas não coincidem. Digite novamente.');
-      return;
-    }
-
-    setShowValidationErrors(false);
     setError('');
     setSuccessMessage('');
     setIsLoading(true);
     try {
-      await setPasswordAndNameAfterSignUpOtp(nameTrim, password);
+      await verifyEmailOtp(emailTrim, code);
+      await ensureUserProfileForOAuth();
+      await setPasswordAndNameAfterSignUpOtp(name.trim(), password);
       const profile = await getCurrentUser();
       const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
       onAuthenticate(role);
     } catch (err: any) {
-      setError(err?.message ?? 'Não foi possível concluir o cadastro. Tente novamente.');
+      setError(err?.message ?? 'Código inválido ou expirado. Tente novamente ou solicite um novo.');
     } finally {
       setIsLoading(false);
     }
@@ -414,29 +421,33 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
 
   const primaryButtonLabel = !isSignUp
     ? (Platform.OS === 'android' ? 'ENTRAR' : 'Entrar')
-    : signUpStep === 'email'
-      ? (Platform.OS === 'android' ? 'ENVIAR CÓDIGO' : 'Enviar código')
-      : signUpStep === 'code'
-        ? (Platform.OS === 'android' ? 'VERIFICAR CÓDIGO' : 'Verificar código')
-        : (Platform.OS === 'android' ? 'CRIAR CONTA' : 'Criar conta');
+    : signUpStep === 'form'
+      ? (Platform.OS === 'android' ? 'CONTINUAR' : 'Continuar')
+      : !otpSent
+        ? (Platform.OS === 'android' ? 'ENVIAR CÓDIGO' : 'Enviar código')
+        : (Platform.OS === 'android' ? 'CONCLUIR CADASTRO' : 'Concluir cadastro');
 
   const handlePrimaryPress = () => {
     if (!isSignUp) return handleAuth();
-    if (signUpStep === 'email') return handleSendSignUpOtp();
-    if (signUpStep === 'code') return handleVerifySignUpOtp();
-    return handleCompleteSignUp();
+    if (signUpStep === 'form') return handleContinueSignUpForm();
+    if (!otpSent) return handleSendSignUpOtp();
+    return handleVerifySignUpOtp();
   };
 
-  const isPrimaryLoading = isLoading || (isSignUp && signUpStep === 'email' && isSendingOtp);
+  const isPrimaryLoading = isLoading || (isSignUp && signUpStep === 'code' && !otpSent && isSendingOtp);
 
   const hasEmailError = showValidationErrors && !email.trim();
   const hasPasswordError =
     showValidationErrors &&
     ((!isSignUp && !password.trim()) ||
-      (isSignUp && signUpStep === 'details' && (!password.trim() || password.length < MIN_PASSWORD_LENGTH)));
-  const hasNameError = showValidationErrors && isSignUp && signUpStep === 'details' && !name.trim();
+      (isSignUp && signUpStep === 'form' && (!password.trim() || password.length < MIN_PASSWORD_LENGTH)));
+  const hasNameError = showValidationErrors && isSignUp && signUpStep === 'form' && !name.trim();
   const hasConfirmPasswordError =
-    showValidationErrors && isSignUp && signUpStep === 'details' && passwordConfirm.length > 0 && password !== passwordConfirm;
+    showValidationErrors &&
+    isSignUp &&
+    signUpStep === 'form' &&
+    passwordConfirm.length > 0 &&
+    password !== passwordConfirm;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -509,11 +520,12 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     <TouchableOpacity
                       style={[styles.tab, !isSignUp && styles.tabActive]}
                       onPress={() => {
-                        if (isSignUp && (signUpStep === 'code' || signUpStep === 'details')) {
+                        if (isSignUp && signUpStep === 'code') {
                           signOut().catch(() => {});
                         }
                         setIsSignUp(false);
-                        setSignUpStep('email');
+                        setSignUpStep('form');
+                        setOtpSent(false);
                         setOtpCode('');
                         setPasswordConfirm('');
                         setError('');
@@ -530,7 +542,8 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                       style={[styles.tab, isSignUp && styles.tabActive]}
                       onPress={() => {
                         setIsSignUp(true);
-                        setSignUpStep('email');
+                        setSignUpStep('form');
+                        setOtpSent(false);
                         setOtpCode('');
                         setPasswordConfirm('');
                         setError('');
@@ -558,8 +571,8 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     </View>
                   )}
 
-                  {/* E-mail: oculto na etapa do código do cadastro */}
-                  {(!isSignUp || signUpStep !== 'code') && (
+                  {/* Login — e-mail */}
+                  {!isSignUp && (
                     <View style={styles.fieldGroup}>
                       <Text style={styles.fieldLabel}>E-mail</Text>
                       <TextInput
@@ -567,7 +580,6 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                           styles.fieldInput,
                           focusedField === 'email' && styles.fieldInputFocused,
                           hasEmailError && styles.fieldInputError,
-                          isSignUp && signUpStep === 'details' && styles.fieldInputReadOnly,
                         ]}
                         placeholder="E-mail"
                         placeholderTextColor="#888"
@@ -579,59 +591,179 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         autoCapitalize="none"
                         textContentType="emailAddress"
                         autoComplete="email"
-                        editable={!isLoading && !(isSignUp && signUpStep === 'details')}
-                      />
-                    </View>
-                  )}
-
-                  {/* Cadastro — nome após confirmar o código */}
-                  {isSignUp && signUpStep === 'details' && (
-                    <View style={styles.fieldGroup}>
-                      <Text style={styles.fieldLabel}>Nome completo</Text>
-                      <TextInput
-                        style={[
-                          styles.fieldInput,
-                          focusedField === 'name' && styles.fieldInputFocused,
-                          hasNameError && styles.fieldInputError,
-                        ]}
-                        placeholder="Nome completo"
-                        placeholderTextColor="#888"
-                        value={name}
-                        onChangeText={(t) => { setName(t); if (showValidationErrors) setShowValidationErrors(false); }}
-                        onFocus={() => setFocusedField('name')}
-                        onBlur={() => setFocusedField(null)}
                         editable={!isLoading}
-                        autoCapitalize="words"
                       />
                     </View>
                   )}
 
-                  {/* Cadastro — código por e-mail */}
+                  {/* Cadastro — passo 1: nome, e-mail, senha e confirmação */}
+                  {isSignUp && signUpStep === 'form' && (
+                    <>
+                      <View style={styles.fieldGroup}>
+                        <Text style={styles.fieldLabel}>Nome completo</Text>
+                        <TextInput
+                          style={[
+                            styles.fieldInput,
+                            focusedField === 'name' && styles.fieldInputFocused,
+                            hasNameError && styles.fieldInputError,
+                          ]}
+                          placeholder="Nome completo"
+                          placeholderTextColor="#888"
+                          value={name}
+                          onChangeText={(t) => { setName(t); if (showValidationErrors) setShowValidationErrors(false); }}
+                          onFocus={() => setFocusedField('name')}
+                          onBlur={() => setFocusedField(null)}
+                          editable={!isLoading}
+                          autoCapitalize="words"
+                        />
+                      </View>
+                      <View style={styles.fieldGroup}>
+                        <Text style={styles.fieldLabel}>E-mail</Text>
+                        <TextInput
+                          style={[
+                            styles.fieldInput,
+                            focusedField === 'email' && styles.fieldInputFocused,
+                            hasEmailError && styles.fieldInputError,
+                          ]}
+                          placeholder="E-mail"
+                          placeholderTextColor="#888"
+                          value={email}
+                          onChangeText={(t) => { setEmail(t); if (showValidationErrors) setShowValidationErrors(false); }}
+                          onFocus={() => setFocusedField('email')}
+                          onBlur={() => setFocusedField(null)}
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          textContentType="emailAddress"
+                          autoComplete="email"
+                          editable={!isLoading}
+                        />
+                      </View>
+                      <View style={styles.fieldGroup}>
+                        <Text style={styles.fieldLabel}>Senha</Text>
+                        <View
+                          style={[
+                            styles.passwordWrap,
+                            focusedField === 'password' && styles.fieldInputFocused,
+                            hasPasswordError && styles.fieldInputError,
+                          ]}
+                        >
+                          <TextInput
+                            style={styles.passwordInput}
+                            placeholder="Senha"
+                            placeholderTextColor="#888"
+                            value={password}
+                            onChangeText={(t) => { setPassword(t); if (showValidationErrors) setShowValidationErrors(false); }}
+                            onFocus={() => setFocusedField('password')}
+                            onBlur={() => setFocusedField(null)}
+                            secureTextEntry={!showPassword}
+                            textContentType="newPassword"
+                            autoComplete="password-new"
+                            editable={!isLoading}
+                          />
+                          <TouchableOpacity
+                            style={styles.eyeBtn}
+                            onPress={() => setShowPassword((v) => !v)}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          >
+                            {showPassword ? (
+                              <EyeOff size={22} color="#555" />
+                            ) : (
+                              <Eye size={22} color="#555" />
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <View style={styles.fieldGroup}>
+                        <Text style={styles.fieldLabel}>Confirmar senha</Text>
+                        <View
+                          style={[
+                            styles.passwordWrap,
+                            focusedField === 'passwordConfirm' && styles.fieldInputFocused,
+                            (hasConfirmPasswordError ||
+                              (showValidationErrors && passwordConfirm.length > 0 && password !== passwordConfirm)) &&
+                              styles.fieldInputError,
+                          ]}
+                        >
+                          <TextInput
+                            style={styles.passwordInput}
+                            placeholder="Digite a senha novamente"
+                            placeholderTextColor="#888"
+                            value={passwordConfirm}
+                            onChangeText={(t) => { setPasswordConfirm(t); if (showValidationErrors) setShowValidationErrors(false); }}
+                            onFocus={() => setFocusedField('passwordConfirm')}
+                            onBlur={() => setFocusedField(null)}
+                            secureTextEntry={!showConfirmPassword}
+                            textContentType="newPassword"
+                            autoComplete="password-new"
+                            editable={!isLoading}
+                          />
+                          <TouchableOpacity
+                            style={styles.eyeBtn}
+                            onPress={() => setShowConfirmPassword((v) => !v)}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          >
+                            {showConfirmPassword ? (
+                              <EyeOff size={22} color="#555" />
+                            ) : (
+                              <Eye size={22} color="#555" />
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </>
+                  )}
+
+                  {/* Cadastro — passo 2: resumo + enviar código + (depois) código */}
                   {isSignUp && signUpStep === 'code' && (
-                    <View style={styles.fieldGroup}>
-                      <Text style={styles.fieldLabel}>Código enviado para {email.trim()}</Text>
-                      <TextInput
-                        style={[styles.fieldInput, styles.otpInput]}
-                        placeholder="000000"
-                        placeholderTextColor="#888"
-                        value={otpCode}
-                        onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); setError(''); }}
-                        keyboardType="number-pad"
-                        maxLength={6}
-                        editable={!isLoading}
-                        autoFocus
-                      />
+                    <View style={styles.signUpVerifyBlock}>
+                      <Text style={styles.signUpVerifyTitle}>Quase lá</Text>
+                      <Text style={styles.signUpVerifyText}>
+                        {otpSent
+                          ? 'Digite o código de 6 dígitos enviado para:'
+                          : 'Seus dados foram preenchidos. Toque em Enviar código para validar o e-mail:'}
+                      </Text>
+                      <Text style={styles.signUpVerifyEmail}>{email.trim()}</Text>
+                      <Text style={styles.signUpVerifyName}>{name.trim()}</Text>
                       <TouchableOpacity
-                        style={styles.resendOtpLink}
-                        onPress={handleSendSignUpOtp}
-                        disabled={isSendingOtp || isLoading}
+                        style={styles.forgotPasswordLink}
+                        onPress={() => {
+                          setSignUpStep('form');
+                          setOtpSent(false);
+                          setOtpCode('');
+                          setError('');
+                          setSuccessMessage('');
+                        }}
+                        disabled={isLoading || isSendingOtp}
                       >
-                        {isSendingOtp ? (
-                          <ActivityIndicator size="small" color={COLORS.primary} />
-                        ) : (
-                          <Text style={styles.resendOtpText}>Reenviar código</Text>
-                        )}
+                        <Text style={styles.forgotPasswordText}>Alterar meus dados</Text>
                       </TouchableOpacity>
+                      {otpSent && (
+                        <View style={[styles.fieldGroup, { marginTop: 8 }]}>
+                          <Text style={styles.fieldLabel}>Código do e-mail</Text>
+                          <TextInput
+                            style={[styles.fieldInput, styles.otpInput]}
+                            placeholder="000000"
+                            placeholderTextColor="#888"
+                            value={otpCode}
+                            onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                            keyboardType="number-pad"
+                            maxLength={6}
+                            editable={!isLoading}
+                            autoFocus
+                          />
+                          <TouchableOpacity
+                            style={styles.resendOtpLink}
+                            onPress={handleSendSignUpOtp}
+                            disabled={isSendingOtp || isLoading}
+                          >
+                            {isSendingOtp ? (
+                              <ActivityIndicator size="small" color={COLORS.primary} />
+                            ) : (
+                              <Text style={styles.resendOtpText}>Reenviar código</Text>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   )}
 
@@ -684,83 +816,6 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                           <Text style={styles.forgotPasswordText}>Esqueci a senha</Text>
                         )}
                       </TouchableOpacity>
-                    </>
-                  )}
-
-                  {/* Cadastro — senha e confirmação */}
-                  {isSignUp && signUpStep === 'details' && (
-                    <>
-                      <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>Senha</Text>
-                        <View
-                          style={[
-                            styles.passwordWrap,
-                            focusedField === 'password' && styles.fieldInputFocused,
-                            hasPasswordError && styles.fieldInputError,
-                          ]}
-                        >
-                          <TextInput
-                            style={styles.passwordInput}
-                            placeholder="Senha"
-                            placeholderTextColor="#888"
-                            value={password}
-                            onChangeText={(t) => { setPassword(t); if (showValidationErrors) setShowValidationErrors(false); }}
-                            onFocus={() => setFocusedField('password')}
-                            onBlur={() => setFocusedField(null)}
-                            secureTextEntry={!showPassword}
-                            textContentType="newPassword"
-                            autoComplete="password-new"
-                            editable={!isLoading}
-                          />
-                          <TouchableOpacity
-                            style={styles.eyeBtn}
-                            onPress={() => setShowPassword((v) => !v)}
-                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                          >
-                            {showPassword ? (
-                              <EyeOff size={22} color="#555" />
-                            ) : (
-                              <Eye size={22} color="#555" />
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>Confirmar senha</Text>
-                        <View
-                          style={[
-                            styles.passwordWrap,
-                            focusedField === 'passwordConfirm' && styles.fieldInputFocused,
-                            (hasConfirmPasswordError || (showValidationErrors && passwordConfirm && password !== passwordConfirm)) &&
-                              styles.fieldInputError,
-                          ]}
-                        >
-                          <TextInput
-                            style={styles.passwordInput}
-                            placeholder="Digite a senha novamente"
-                            placeholderTextColor="#888"
-                            value={passwordConfirm}
-                            onChangeText={(t) => { setPasswordConfirm(t); if (showValidationErrors) setShowValidationErrors(false); }}
-                            onFocus={() => setFocusedField('passwordConfirm')}
-                            onBlur={() => setFocusedField(null)}
-                            secureTextEntry={!showConfirmPassword}
-                            textContentType="newPassword"
-                            autoComplete="password-new"
-                            editable={!isLoading}
-                          />
-                          <TouchableOpacity
-                            style={styles.eyeBtn}
-                            onPress={() => setShowConfirmPassword((v) => !v)}
-                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                          >
-                            {showConfirmPassword ? (
-                              <EyeOff size={22} color="#555" />
-                            ) : (
-                              <Eye size={22} color="#555" />
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      </View>
                     </>
                   )}
 
@@ -1113,6 +1168,32 @@ const styles = StyleSheet.create({
   fieldInputReadOnly: {
     backgroundColor: 'rgba(0,0,0,0.04)',
     color: '#64748B',
+  },
+  signUpVerifyBlock: {
+    marginBottom: 8,
+  },
+  signUpVerifyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  signUpVerifyText: {
+    fontSize: 14,
+    color: '#64748B',
+    lineHeight: 20,
+    marginBottom: 6,
+  },
+  signUpVerifyEmail: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 4,
+  },
+  signUpVerifyName: {
+    fontSize: 14,
+    color: '#475569',
+    marginBottom: 4,
   },
   forgotPasswordLink: {
     alignSelf: 'flex-start',
