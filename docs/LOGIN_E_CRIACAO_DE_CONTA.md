@@ -6,14 +6,14 @@ Descrição completa do fluxo atual de autenticação e criação de conta no ap
 
 ## 1. Visão geral
 
-O app oferece quatro formas de acesso:
+O app oferece estes fluxos de acesso:
 
 | Método | Descrição |
 |--------|-----------|
-| **Código por e-mail (OTP)** | Login sem senha: o usuário informa o e-mail, recebe um código de 6 dígitos e digita o código para entrar (padrão na aba Entrar). |
-| **E-mail e senha** | Login ou cadastro com senha; opção "Entrar com senha" na aba Entrar ou aba Cadastrar. |
+| **E-mail e senha** | Na aba **Entrar**: e-mail + senha. |
+| **Cadastro com código** | Na aba **Cadastrar**: envio de código por e-mail → verificação → nome + senha + confirmar senha (`setPasswordAndNameAfterSignUpOtp`). |
 | **Google (OAuth)** | Login ou criação de conta usando conta Google (Supabase Auth com provider Google). |
-| **Redefinição de senha** | Envio de e-mail com link para redefinir a senha (apenas fluxo e-mail/senha). |
+| **Redefinição de senha** | Envio de e-mail com link para redefinir a senha (fluxo e-mail/senha na aba Entrar). |
 
 - **Backend:** Supabase (Auth + tabela `public.users` para perfil e role).
 - **Cliente:** `services/supabase.ts` (funções de auth) e `screens/AuthScreen.tsx` (tela de login/cadastro).
@@ -26,8 +26,7 @@ O app oferece quatro formas de acesso:
 ### 2.1 Supabase Auth
 
 - **Login com senha:** `signInWithPassword({ email, password })`
-- **Login por código (OTP):** `signInWithOtp({ email, options: { shouldCreateUser: true } })` envia o código; `verifyOtp({ email, token, type: 'email' })` valida o código e inicia a sessão.
-- **Cadastro:** `signUp({ email, password, options: { data: { name } } })`
+- **Cadastro com verificação por e-mail:** `signInWithOtp({ email, options: { shouldCreateUser: true } })` envia o código; `verifyOtp({ email, token, type: 'email' })` valida e abre sessão; em seguida `updateUser({ password, data: { name } })` e atualização de `public.users` (`setPasswordAndNameAfterSignUpOtp`).
 - **Redefinição de senha:** `resetPasswordForEmail(email)` — envia e-mail com link do Supabase.
 - **Google:** OAuth 2.0 via Supabase (`signInWithOAuth({ provider: 'google', options: { redirectTo, skipBrowserRedirect: true } })`).
 
@@ -47,7 +46,7 @@ Usada para perfil do usuário e papel no app:
 
 O perfil é criado:
 
-- **No cadastro por e-mail:** logo após `signUp`, com `insert` em `users` (`id`, `email`, `name`, `role: 'user'`).
+- **No cadastro com código:** após `verifyOtp`, `ensureUserProfileForOAuth()` pode criar linha provisória; ao finalizar, `setPasswordAndNameAfterSignUpOtp` atualiza o nome em `users` (insert ou update).
 - **No primeiro login com Google:** pela função `ensureUserProfileForOAuth()` (ver seção 6.2).
 
 ---
@@ -88,74 +87,44 @@ signIn(email, password) → supabase.auth.signInWithPassword({ email, password }
 
 Não há confirmação de e-mail obrigatória no código; o comportamento depende das configurações do Supabase (confirmar e-mail ou não).
 
-### 4.5 Login por código por e-mail (OTP)
+### 4.5 Código por e-mail (somente cadastro)
 
-Na aba **Entrar**, o fluxo padrão é sem senha: o usuário informa o e-mail, recebe um código de 6 dígitos por e-mail e digita o código para entrar.
+O código de 6 dígitos é usado **apenas na aba Cadastrar**, para confirmar o e-mail antes de definir senha. A aba **Entrar** usa somente e-mail + senha (e Google). Detalhes na seção 5.
 
-**Fluxo na tela:**
-
-1. Usuário preenche **E-mail** e toca em **Enviar código**.
-2. Validação: e-mail não vazio e formato válido.
-3. Chamada a `sendEmailOtp(email)` (Supabase `signInWithOtp({ email, options: { shouldCreateUser: true } })`).
-4. Em sucesso: mensagem "Código enviado! Verifique seu e-mail e digite os 6 dígitos."; a tela passa a mostrar o campo **Código** e o botão **Entrar**, além de **Reenviar código**.
-5. Usuário digita o código de 6 dígitos e toca em **Entrar**.
-6. Chamada a `verifyEmailOtp(emailForOtp, code)` (Supabase `verifyOtp({ email, token, type: 'email' })`).
-7. Em sucesso: `ensureUserProfileForOAuth()` garante perfil em `users`; em seguida `getCurrentUser()` e `onAuthenticate(role)`.
-8. O link **Entrar com senha** exibe o formulário tradicional (e-mail + senha). O link **Usar código por e-mail** volta ao fluxo OTP.
-
-**Funções no serviço:**
-
-```ts
-// services/supabase.ts
-sendEmailOtp(email)   → supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
-verifyEmailOtp(email, token) → supabase.auth.verifyOtp({ email, token, type: 'email' })
-```
-
-**Template de e-mail no Supabase (obrigatório para OTP):**
-
-Por padrão o Supabase envia um *magic link* (link de confirmação). Para enviar um **código de 6 dígitos** em vez do link:
-
-1. No **Supabase Dashboard** → **Authentication** → **Email Templates**.
-2. Selecione o template **Magic Link** (ou o usado para sign-in por e-mail).
-3. No corpo do e-mail, use a variável **`{{ .Token }}`** para exibir o código de 6 dígitos.  
-   Exemplo de corpo:  
-   `Seu código de acesso Guest Jovem: {{ .Token }}`  
-   Ou:  
-   `Use o código abaixo para entrar: {{ .Token }}. Ele expira em alguns minutos.`
-4. Se o template usar `{{ .ConfirmationURL }}`, o Supabase envia magic link; se usar `{{ .Token }}`, envia o OTP. Para o fluxo do app (digitar código na tela), o template deve conter `{{ .Token }}`.
-
-Assim, o usuário recebe o código por e-mail e o digita na tela para concluir o login. Se o e-mail ainda não estiver cadastrado, `shouldCreateUser: true` faz o Supabase criar o usuário no primeiro uso do código; o app cria o perfil em `users` via `ensureUserProfileForOAuth()` após `verifyOtp`.
+**Template de e-mail no Supabase:** o template de Magic Link deve incluir **`{{ .Token }}`** para o usuário receber o código (ver seção 5.3).
 
 ---
 
-## 5. Criação de conta (e-mail e senha)
+## 5. Criação de conta (código por e-mail + senha)
 
 ### 5.1 Fluxo na tela
 
-1. Usuário alterna para **Criar conta** e preenche **Nome**, **E-mail** e **Senha**.
-2. Validações:
-   - E-mail não vazio e formato válido.
-   - Senha não vazia e com **mínimo 6 caracteres** (`MIN_PASSWORD_LENGTH = 6`).
+1. Aba **Cadastrar** → usuário informa **E-mail** e toca em **Enviar código**.
+2. Recebe o código por e-mail; informa os **6 dígitos** e toca em **Verificar código**.
+3. Em sucesso: mensagem "E-mail confirmado! Agora defina seu nome e senha."; campos **E-mail** (somente leitura), **Nome completo**, **Senha** e **Confirmar senha**.
+4. Validações finais:
    - Nome não vazio.
-3. Chamada a `signUp(email, password, name)`.
-4. Em sucesso:
-   - Mensagem: "Conta criada! Verifique seu e-mail para confirmar o cadastro."
-   - Após 4 segundos a tela volta para o modo "Entrar" e a mensagem some.
-5. Em erro:
-   - "User already registered" / "already registered" → "Este e-mail já está cadastrado. Use a opção Entrar."
-   - Outros → mensagem da API.
+   - Senha com **mínimo 6 caracteres**.
+   - **Senha** e **Confirmar senha** devem ser iguais.
+5. **Criar conta** chama `setPasswordAndNameAfterSignUpOtp(name, password)` e em seguida `onAuthenticate(role)`.
+6. Se o usuário mudar para **Entrar** no meio do cadastro (após código ou na etapa de senha), a sessão OTP é encerrada com `signOut()` para não deixar conta “pela metade”.
 
-### 5.2 Função no serviço
+### 5.2 Funções no serviço
 
 ```ts
 // services/supabase.ts
-signUp(email, password, name) →
-  1. supabase.auth.signUp({ email, password, options: { data: { name } } })
-  2. Se data.user existe: insert em public.users com id, email, name, role: 'user', created_at
-  3. Se o insert falhar com 23505 (duplicata), ignora e retorna data (evita erro se trigger já criou perfil)
+sendSignUpEmailOtp(email) → signInWithOtp({ email, options: { shouldCreateUser: true } })
+verifyEmailOtp(email, token) → verifyOtp({ email, token, type: 'email' })
+setPasswordAndNameAfterSignUpOtp(name, password) → updateUser({ password, data: { name, full_name } }) + insert/update em public.users
 ```
 
-Assim, todo usuário criado por e-mail/senha ganha um registro em `users` com `role: 'user'`.
+O alias `sendEmailOtp` aponta para `sendSignUpEmailOtp` (compatibilidade).
+
+### 5.3 Template de e-mail (Supabase)
+
+1. **Authentication** → **Email Templates** → **Magic Link** (ou equivalente).
+2. Incluir **`{{ .Token }}`** no corpo para enviar o código de 6 dígitos.
+3. Se usar `{{ .ConfirmationURL }}` em vez de `{{ .Token }}`, o usuário recebe link em vez de código — o fluxo do app espera código digitável.
 
 ---
 

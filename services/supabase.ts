@@ -172,11 +172,11 @@ export const resetPassword = async (email: string): Promise<void> => {
 };
 
 /**
- * Envia um código de 6 dígitos por e-mail para login sem senha (OTP).
- * No Supabase: Authentication → Email Templates → use {{ .Token }} no template para enviar o código.
- * Se o usuário não existir, será criado (shouldCreateUser: true).
+ * Envia código de 6 dígitos por e-mail para **criação de conta** (fluxo Cadastrar).
+ * No Supabase: Authentication → Email Templates → use {{ .Token }} no corpo do e-mail.
+ * `shouldCreateUser: true` permite criar o usuário no Auth ao verificar o código.
  */
-export const sendEmailOtp = async (email: string): Promise<void> => {
+export const sendSignUpEmailOtp = async (email: string): Promise<void> => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const { error } = await supabaseClient.auth.signInWithOtp({
     email: email.trim().toLowerCase(),
@@ -185,9 +185,11 @@ export const sendEmailOtp = async (email: string): Promise<void> => {
   if (error) throw error;
 };
 
+/** @deprecated Use sendSignUpEmailOtp (código só no cadastro). */
+export const sendEmailOtp = sendSignUpEmailOtp;
+
 /**
- * Verifica o código de 6 dígitos enviado por e-mail e inicia a sessão.
- * Após sucesso, use ensureUserProfileForOAuth() para criar perfil em users se necessário.
+ * Verifica o código enviado no cadastro; inicia sessão temporária até definir senha e nome.
  */
 export const verifyEmailOtp = async (email: string, token: string): Promise<void> => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
@@ -197,6 +199,43 @@ export const verifyEmailOtp = async (email: string, token: string): Promise<void
     type: 'email',
   });
   if (error) throw error;
+};
+
+/**
+ * Após OTP validado no cadastro: define senha, nome no metadata e atualiza `public.users`.
+ */
+export const setPasswordAndNameAfterSignUpOtp = async (name: string, password: string): Promise<void> => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const trimmed = name.trim();
+  const { error: updErr } = await supabaseClient.auth.updateUser({
+    password,
+    data: { name: trimmed, full_name: trimmed },
+  });
+  if (updErr) throw updErr;
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  const user = session?.user;
+  if (!user?.id) throw new Error('Sessão inválida após atualizar perfil.');
+
+  const { data: existing } = await supabaseClient.from('users').select('id').eq('id', user.id).maybeSingle();
+  if (existing) {
+    const { error: e2 } = await supabaseClient.from('users').update({ name: trimmed }).eq('id', user.id);
+    if (e2) throw e2;
+  } else {
+    const { error: e3 } = await supabaseClient.from('users').insert({
+      id: user.id,
+      email: user.email ?? '',
+      name: trimmed,
+      role: 'user',
+      created_at: new Date().toISOString(),
+    });
+    if (e3) {
+      if (e3.code === '23505') {
+        const { error: e4 } = await supabaseClient.from('users').update({ name: trimmed }).eq('id', user.id);
+        if (e4) throw e4;
+      } else throw e3;
+    }
+  }
 };
 
 const GOOGLE_REDIRECT_SCHEME = 'guestjovem://google-auth';
