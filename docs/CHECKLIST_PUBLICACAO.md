@@ -36,7 +36,14 @@ Se ao abrir o app no celular aparecer **"localhost está inacessível"**, é por
 - [ ] No [expo.dev](https://expo.dev) → seu projeto → **Environment variables** (ou **Secrets**), cadastre:
   - `EXPO_PUBLIC_SUPABASE_URL` = URL do seu projeto Supabase (ex.: `https://xxxx.supabase.co`)
   - `EXPO_PUBLIC_SUPABASE_ANON_KEY` = anon key do Supabase (produção)
+  - `EXPO_PUBLIC_WEB_URL` = URL pública do app (ex.: `https://guestjovem.com` ou `https://seu-projeto.vercel.app`) — usada nos **links dos e-mails** (reset de senha, OTP) e embutida no build via `app.config.js`
 - [ ] Confirme que o `.env` local tem as mesmas variáveis para desenvolvimento (e que **não** está no Git).
+
+### E-mail (SMTP Gmail no Supabase)
+
+- [ ] No **Supabase** → Project Settings → Auth → **SMTP**: Gmail com **senha de app** (não a senha da conta). Credenciais **só no Dashboard**, nunca no código.
+- [ ] **Authentication → URL Configuration**: **Redirect URLs** incluem a URL do site (`EXPO_PUBLIC_WEB_URL`), `guestjovem://**` e URLs de preview se necessário.
+- Guia passo a passo: **[SUPABASE_SMTP_GMAIL.md](./SUPABASE_SMTP_GMAIL.md)**.
 
 **Se o app abrir com tela branca ou mensagem "Supabase não configurado" mesmo após gerar build no EAS depois de configurar as variáveis:**
 

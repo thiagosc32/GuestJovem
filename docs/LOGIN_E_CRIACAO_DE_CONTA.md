@@ -11,7 +11,7 @@ O app oferece estes fluxos de acesso:
 | Método | Descrição |
 |--------|-----------|
 | **E-mail e senha** | Na aba **Entrar**: e-mail + senha. |
-| **Cadastro com código** | Na aba **Cadastrar**: envio de código por e-mail → verificação → nome + senha + confirmar senha (`setPasswordAndNameAfterSignUpOtp`). |
+| **Cadastro com confirmação por e-mail** | Na aba **Cadastrar**: nome, e-mail, senha e confirmação → `signUp` envia o e-mail **Confirm signup**; o usuário abre o link e depois faz **Entrar**. |
 | **Google (OAuth)** | Login ou criação de conta usando conta Google (Supabase Auth com provider Google). |
 | **Redefinição de senha** | Envio de e-mail com link para redefinir a senha (fluxo e-mail/senha na aba Entrar). |
 
@@ -26,7 +26,7 @@ O app oferece estes fluxos de acesso:
 ### 2.1 Supabase Auth
 
 - **Login com senha:** `signInWithPassword({ email, password })`
-- **Cadastro com verificação por e-mail:** `signInWithOtp({ email, options: { shouldCreateUser: true } })` envia o código; `verifyOtp({ email, token, type: 'email' })` valida e abre sessão; em seguida `updateUser({ password, data: { name } })` e atualização de `public.users` (`setPasswordAndNameAfterSignUpOtp`).
+- **Cadastro com confirmação por e-mail:** `signUp({ email, password, options: { data: { name }, emailRedirectTo } })` envia o e-mail de confirmação (template **Confirm signup**); após o clique no link, o usuário pode fazer `signInWithPassword`. O perfil em `public.users` é criado pelo trigger `handle_new_auth_user` ao inserir em `auth.users` (nome em `user_metadata`).
 - **Redefinição de senha:** `resetPasswordForEmail(email)` — envia e-mail com link do Supabase.
 - **Google:** OAuth 2.0 via Supabase (`signInWithOAuth({ provider: 'google', options: { redirectTo, skipBrowserRedirect: true } })`).
 
@@ -46,8 +46,9 @@ Usada para perfil do usuário e papel no app:
 
 O perfil é criado:
 
-- **No cadastro com código:** após `verifyOtp`, `ensureUserProfileForOAuth()` pode criar linha provisória; ao finalizar, `setPasswordAndNameAfterSignUpOtp` atualiza o nome em `users` (insert ou update).
-- **No primeiro login com Google:** pela função `ensureUserProfileForOAuth()` (ver seção 6.2).
+- **No cadastro por e-mail/senha:** trigger `on_auth_user_created` → `handle_new_auth_user` cria a linha em `public.users` com o nome vindo de `raw_user_meta_data` (definido no `signUp`).
+- **Se a confirmação de e-mail estiver desativada no Supabase:** `signUp` retorna sessão e o código pode inserir em `users` se ainda não existir linha (fallback).
+- **No primeiro login com Google:** pela função `ensureUserProfileForOAuth()` (ver seção 7.7).
 
 ---
 
@@ -85,51 +86,39 @@ O cliente é inicializado de forma preguiçosa (proxy) para garantir que variáv
 signIn(email, password) → supabase.auth.signInWithPassword({ email, password })
 ```
 
-Não há confirmação de e-mail obrigatória no código; o comportamento depende das configurações do Supabase (confirmar e-mail ou não).
-
-### 4.5 Código por e-mail (somente cadastro)
-
-O código de 6 dígitos é usado **apenas na aba Cadastrar**, para confirmar o e-mail antes de definir senha. A aba **Entrar** usa somente e-mail + senha (e Google). Detalhes na seção 5.
-
-**Template de e-mail no Supabase:** o template de Magic Link deve incluir **`{{ .Token }}`** para o usuário receber o código (ver seção 5.3).
+Com **confirmação de e-mail** habilitada no Supabase, o login só funciona após o usuário confirmar pelo link do e-mail (mensagem de erro “Email not confirmed” tratada na tela).
 
 ---
 
-## 5. Criação de conta (código por e-mail + senha)
+## 5. Criação de conta (link de confirmação no e-mail)
 
 ### 5.1 Fluxo na tela
 
-1. Aba **Cadastrar** — **Passo 1:** preencher **Nome completo**, **E-mail**, **Senha** e **Confirmar senha**; tocar em **Continuar** (valida tudo).
-2. **Passo 2:** tela “Quase lá” com resumo do e-mail e nome; tocar em **Enviar código** (só aparece depois do passo 1).
-3. Após o envio, aparece o campo do **código de 6 dígitos** e o botão **Concluir cadastro** (verifica o código, define senha/nome no Auth e em `users`).
-4. **Reenviar código** e **Alterar meus dados** (volta ao passo 1) ficam disponíveis na etapa 2.
-5. Validações no passo 1: nome, e-mail válido, senha mínima de 6 caracteres, senhas iguais.
-6. Se o usuário mudar para **Entrar** durante o passo 2, chama-se `signOut()` se houver sessão pendente.
+1. Aba **Cadastrar:** preencher **Nome completo**, **E-mail**, **Senha** e **Confirmar senha**; tocar em **Cadastrar**.
+2. O app chama `signUp(email, password, name)` com `emailRedirectTo` (URL pública do app — ver `getAuthEmailRedirectUrl()` e `EXPO_PUBLIC_WEB_URL`).
+3. Se o Supabase **não** devolver sessão (confirmação obrigatória): exibe mensagem de sucesso pedindo para abrir o e-mail e confirmar; o usuário depois usa **Entrar** com a mesma senha.
+4. Se o projeto tiver **confirmação de e-mail desligada**, `signUp` pode retornar sessão e o app entra direto (como antes).
 
-### 5.2 Funções no serviço
+### 5.2 Função no serviço
 
 ```ts
 // services/supabase.ts
-sendSignUpEmailOtp(email) → signInWithOtp({ email, options: { shouldCreateUser: true } })
-verifyEmailOtp(email, token) → verifyOtp({ email, token, type: 'email' })
-setPasswordAndNameAfterSignUpOtp(name, password) → updateUser({ password, data: { name, full_name } }) + insert/update em public.users
+signUp(email, password, name) →
+  supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { name, full_name },
+      emailRedirectTo: getAuthEmailRedirectUrl(),
+    },
+  })
 ```
-
-O alias `sendEmailOtp` aponta para `sendSignUpEmailOtp` (compatibilidade).
 
 ### 5.3 Template de e-mail (Supabase)
 
-1. **Authentication** → **Email Templates** → **Magic Link** (ou equivalente).
-2. Incluir **`{{ .Token }}`** no corpo para enviar o código de 6 dígitos.
-3. Se usar `{{ .ConfirmationURL }}` em vez de `{{ .Token }}`, o usuário recebe link em vez de código — o fluxo do app espera código digitável.
-4. O fluxo usa `signInWithOtp`: o template que vale é o de **Magic Link**, não só o de “Confirm signup”. Se você colocar `{{ .Token }}` só em “Confirm signup”, o e-mail de OTP pode não bater com a verificação.
-
-### 5.4 Erro “Token has expired or is invalid”
-
-- **Só o último código vale:** se tocar em **Enviar código** ou **Reenviar** de novo, o código anterior deixa de funcionar.
-- **Template:** use **Magic Link** com `{{ .Token }}` (código). Evite misturar link e código no mesmo fluxo sem testar.
-- **E-mail corporativo:** antivírus às vezes “abre” o link do e-mail e **consome** o token antes do usuário — teste com Gmail/outro provedor.
-- **App:** no **iOS/Android** o cliente usa `flowType: 'implicit'` para reduzir conflito entre PKCE e OTP de 6 dígitos; a verificação tenta `type: 'email'` e depois `type: 'signup'` conforme o template do projeto no Supabase.
+1. **Authentication** → **Email Templates** → **Confirm signup**.
+2. Use o link de confirmação padrão do Supabase (`{{ .ConfirmationURL }}` ou equivalente no editor), para o usuário confirmar pelo **navegador/app** após clicar.
+3. Garanta que **Redirect URLs** inclua o mesmo domínio usado em `emailRedirectTo` / `EXPO_PUBLIC_WEB_URL`.
 
 ---
 
@@ -143,7 +132,7 @@ O alias `sendEmailOtp` aponta para `sendSignUpEmailOtp` (compatibilidade).
 4. Em sucesso: "Enviamos um link para redefinir sua senha no e-mail informado. Verifique sua caixa de entrada."
 5. O link enviado é do Supabase; ao clicar, o usuário redefine a senha na página do Supabase (ou na URL configurada no projeto).
 
-### 6.2 Função no serviço
+### 6.2 Funções no serviço
 
 ```ts
 // services/supabase.ts
@@ -312,7 +301,7 @@ Resumo: a mensagem só muda se a **URL do Supabase** (e portanto do redirect de 
 | Arquivo | Função |
 |---------|--------|
 | `screens/AuthScreen.tsx` | Formulários de login, criação de conta, “esqueci senha” e botão “Entrar com Google”; validações; fluxo popup (web PWA). |
-| `services/supabase.ts` | `signIn`, `signUp`, `resetPassword`, `getGoogleSignInUrl`, `setSessionFromOAuthUrl`, `ensureUserProfileForOAuth`, `getCurrentUser`; configuração do client e persistência de sessão. |
+| `services/supabase.ts` | `signIn`, `signUp` (confirmação por e-mail), `resetPassword`, `getGoogleSignInUrl`, `setSessionFromOAuthUrl`, `ensureUserProfileForOAuth`, `getCurrentUser`; configuração do client e persistência de sessão. |
 | `App.tsx` | Estado global de auth; `checkAuthStatus`; `onAuthStateChange`; tratamento de URL de callback OAuth (deep link e web, incluindo popup → postMessage). |
 
 ---
@@ -320,7 +309,7 @@ Resumo: a mensagem só muda se a **URL do Supabase** (e portanto do redirect de 
 ## 11. Regras de negócio resumidas
 
 - **Senha mínima:** 6 caracteres (apenas no cadastro por e-mail).
-- **Perfil em `users`:** criado no `signUp` (e-mail) ou no primeiro login com Google (`ensureUserProfileForOAuth`).
+- **Perfil em `users`:** criado pelo trigger ao registrar em Auth (cadastro e-mail) ou no primeiro login com Google (`ensureUserProfileForOAuth`).
 - **Role padrão:** sempre `'user'` ao criar perfil; admins são definidos manualmente (ou por outro processo) na tabela `users`.
 - **Web PWA:** login Google em popup + postMessage para manter o retorno no atalho da tela inicial; pop-ups devem estar permitidos para o site.
 

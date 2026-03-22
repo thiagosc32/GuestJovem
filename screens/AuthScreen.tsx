@@ -15,25 +15,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, Flame } from 'lucide-react-native';
-import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import {
   signIn,
+  signUp,
   getGoogleSignInUrl,
   getCurrentUser,
   resetPassword,
   setSessionFromOAuthUrl,
   ensureUserProfileForOAuth,
-  sendSignUpEmailOtp,
-  verifyEmailOtp,
-  setPasswordAndNameAfterSignUpOtp,
-  signOut,
 } from '../services/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS } from '../constants/colors';
-import { SPACING, BORDER_RADIUS } from '../constants/dimensions';
-import { TYPOGRAPHY } from '../constants/theme';
 
 const GLASS_BORDER_COLOR = 'rgba(255, 255, 255, 0.2)';
 
@@ -53,12 +47,9 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   const [successMessage, setSuccessMessage] = useState('');
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  /** Login: fluxo dedicado só com e-mail + botão redefinir */
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  /** Cadastro: formulário completo → enviar código → verificar código */
-  const [signUpStep, setSignUpStep] = useState<'form' | 'code'>('form');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -263,64 +254,34 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     return true;
   };
 
-  const handleContinueSignUpForm = () => {
+  /** Cadastro: `signUp` + e-mail de confirmação (Supabase Auth). */
+  const handleSignUp = async () => {
     if (!validateSignUpFormFields()) return;
     setShowValidationErrors(false);
     setError('');
     setSuccessMessage('');
-    setSignUpStep('code');
-    setOtpSent(false);
-    setOtpCode('');
-  };
-
-  const handleSendSignUpOtp = async () => {
-    const emailTrim = email.trim();
-    if (!emailTrim || !isValidEmail(emailTrim)) {
-      setError('E-mail inválido. Volte e corrija seus dados.');
-      return;
-    }
-    setError('');
-    setSuccessMessage('');
-    setIsSendingOtp(true);
-    try {
-      await sendSignUpEmailOtp(emailTrim);
-      setOtpSent(true);
-      setOtpCode('');
-      setSuccessMessage('Código enviado! Verifique seu e-mail e digite os 6 dígitos abaixo.');
-    } catch (err: any) {
-      setError(err?.message ?? 'Não foi possível enviar o código. Tente novamente.');
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
-
-  const handleVerifySignUpOtp = async () => {
-    const code = otpCode.replace(/\D/g, '').slice(0, 8);
-    const emailTrim = email.trim();
-    if (code.length < 6) {
-      setError('Digite o código enviado por e-mail (geralmente 6 dígitos).');
-      return;
-    }
-    if (!emailTrim) {
-      setError('E-mail não encontrado.');
-      return;
-    }
-    if (!validateSignUpFormFields()) {
-      setError('Dados do cadastro incompletos. Volte e preencha novamente.');
-      return;
-    }
-    setError('');
-    setSuccessMessage('');
     setIsLoading(true);
     try {
-      await verifyEmailOtp(emailTrim, code);
-      await ensureUserProfileForOAuth();
-      await setPasswordAndNameAfterSignUpOtp(name.trim(), password);
-      const profile = await getCurrentUser();
-      const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
-      onAuthenticate(role);
+      const data = await signUp(email.trim(), password, name.trim());
+      if (data.session) {
+        const profile = await getCurrentUser();
+        const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
+        onAuthenticate(role);
+      } else {
+        setSuccessMessage(
+          `Enviamos um e-mail de confirmação para ${email.trim()}. Abra o link no e-mail para ativar a conta e depois faça login aqui.`
+        );
+        setError('');
+      }
     } catch (err: any) {
-      setError(err?.message ?? 'Código inválido ou expirado. Tente novamente ou solicite um novo.');
+      console.error('Sign up error:', err);
+      const msg = err?.message ?? '';
+      if (msg.toLowerCase().includes('already registered') || msg.includes('User already registered')) {
+        setError('Este e-mail já está cadastrado. Tente entrar ou use outro e-mail.');
+      } else {
+        setError(err?.message ?? 'Não foi possível concluir o cadastro. Tente novamente.');
+      }
+      setSuccessMessage('');
     } finally {
       setIsLoading(false);
     }
@@ -419,35 +380,37 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     ? [styles.container, isVisible && styles.visible]
     : [styles.container, { opacity: fadeAnim }];
 
-  const primaryButtonLabel = !isSignUp
-    ? (Platform.OS === 'android' ? 'ENTRAR' : 'Entrar')
-    : signUpStep === 'form'
-      ? (Platform.OS === 'android' ? 'CONTINUAR' : 'Continuar')
-      : !otpSent
-        ? (Platform.OS === 'android' ? 'ENVIAR CÓDIGO' : 'Enviar código')
-        : (Platform.OS === 'android' ? 'CONCLUIR CADASTRO' : 'Concluir cadastro');
+  const primaryButtonLabel =
+    !isSignUp && forgotPasswordMode
+      ? Platform.OS === 'android'
+        ? 'REDEFINIR SENHA'
+        : 'Redefinir senha'
+      : !isSignUp
+        ? Platform.OS === 'android'
+          ? 'ENTRAR'
+          : 'Entrar'
+        : Platform.OS === 'android'
+          ? 'CADASTRAR'
+          : 'Cadastrar';
 
   const handlePrimaryPress = () => {
+    if (!isSignUp && forgotPasswordMode) return handleForgotPassword();
     if (!isSignUp) return handleAuth();
-    if (signUpStep === 'form') return handleContinueSignUpForm();
-    if (!otpSent) return handleSendSignUpOtp();
-    return handleVerifySignUpOtp();
+    return handleSignUp();
   };
 
-  const isPrimaryLoading = isLoading || (isSignUp && signUpStep === 'code' && !otpSent && isSendingOtp);
+  const isPrimaryLoading =
+    isLoading || (!isSignUp && forgotPasswordMode && isResettingPassword);
 
   const hasEmailError = showValidationErrors && !email.trim();
   const hasPasswordError =
     showValidationErrors &&
+    !forgotPasswordMode &&
     ((!isSignUp && !password.trim()) ||
-      (isSignUp && signUpStep === 'form' && (!password.trim() || password.length < MIN_PASSWORD_LENGTH)));
-  const hasNameError = showValidationErrors && isSignUp && signUpStep === 'form' && !name.trim();
+      (isSignUp && (!password.trim() || password.length < MIN_PASSWORD_LENGTH)));
+  const hasNameError = showValidationErrors && isSignUp && !name.trim();
   const hasConfirmPasswordError =
-    showValidationErrors &&
-    isSignUp &&
-    signUpStep === 'form' &&
-    passwordConfirm.length > 0 &&
-    password !== passwordConfirm;
+    showValidationErrors && isSignUp && passwordConfirm.length > 0 && password !== passwordConfirm;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -520,13 +483,8 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     <TouchableOpacity
                       style={[styles.tab, !isSignUp && styles.tabActive]}
                       onPress={() => {
-                        if (isSignUp && signUpStep === 'code') {
-                          signOut().catch(() => {});
-                        }
                         setIsSignUp(false);
-                        setSignUpStep('form');
-                        setOtpSent(false);
-                        setOtpCode('');
+                        setForgotPasswordMode(false);
                         setPasswordConfirm('');
                         setError('');
                         setSuccessMessage('');
@@ -542,9 +500,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                       style={[styles.tab, isSignUp && styles.tabActive]}
                       onPress={() => {
                         setIsSignUp(true);
-                        setSignUpStep('form');
-                        setOtpSent(false);
-                        setOtpCode('');
+                        setForgotPasswordMode(false);
                         setPasswordConfirm('');
                         setError('');
                         setSuccessMessage('');
@@ -571,7 +527,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     </View>
                   )}
 
-                  {/* Login — e-mail */}
+                  {/* Login — e-mail (também no modo esqueci a senha) */}
                   {!isSignUp && (
                     <View style={styles.fieldGroup}>
                       <Text style={styles.fieldLabel}>E-mail</Text>
@@ -591,13 +547,13 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         autoCapitalize="none"
                         textContentType="emailAddress"
                         autoComplete="email"
-                        editable={!isLoading}
+                        editable={!isLoading && !isResettingPassword}
                       />
                     </View>
                   )}
 
-                  {/* Cadastro — passo 1: nome, e-mail, senha e confirmação */}
-                  {isSignUp && signUpStep === 'form' && (
+                  {/* Cadastro: nome, e-mail, senha — confirmação pelo link no e-mail */}
+                  {isSignUp && (
                     <>
                       <View style={styles.fieldGroup}>
                         <Text style={styles.fieldLabel}>Nome completo</Text>
@@ -713,62 +669,8 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     </>
                   )}
 
-                  {/* Cadastro — passo 2: resumo + enviar código + (depois) código */}
-                  {isSignUp && signUpStep === 'code' && (
-                    <View style={styles.signUpVerifyBlock}>
-                      <Text style={styles.signUpVerifyTitle}>Quase lá</Text>
-                      <Text style={styles.signUpVerifyText}>
-                        {otpSent
-                          ? 'Digite o código de 6 dígitos enviado para:'
-                          : 'Seus dados foram preenchidos. Toque em Enviar código para validar o e-mail:'}
-                      </Text>
-                      <Text style={styles.signUpVerifyEmail}>{email.trim()}</Text>
-                      <Text style={styles.signUpVerifyName}>{name.trim()}</Text>
-                      <TouchableOpacity
-                        style={styles.forgotPasswordLink}
-                        onPress={() => {
-                          setSignUpStep('form');
-                          setOtpSent(false);
-                          setOtpCode('');
-                          setError('');
-                          setSuccessMessage('');
-                        }}
-                        disabled={isLoading || isSendingOtp}
-                      >
-                        <Text style={styles.forgotPasswordText}>Alterar meus dados</Text>
-                      </TouchableOpacity>
-                      {otpSent && (
-                        <View style={[styles.fieldGroup, { marginTop: 8 }]}>
-                          <Text style={styles.fieldLabel}>Código do e-mail</Text>
-                          <TextInput
-                            style={[styles.fieldInput, styles.otpInput]}
-                            placeholder="000000"
-                            placeholderTextColor="#888"
-                            value={otpCode}
-                            onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 8)); setError(''); }}
-                            keyboardType="number-pad"
-                            maxLength={8}
-                            editable={!isLoading}
-                            autoFocus
-                          />
-                          <TouchableOpacity
-                            style={styles.resendOtpLink}
-                            onPress={handleSendSignUpOtp}
-                            disabled={isSendingOtp || isLoading}
-                          >
-                            {isSendingOtp ? (
-                              <ActivityIndicator size="small" color={COLORS.primary} />
-                            ) : (
-                              <Text style={styles.resendOtpText}>Reenviar código</Text>
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {/* Login: senha */}
-                  {!isSignUp && (
+                  {/* Login: senha + esqueci (ocultos no modo redefinir senha) */}
+                  {!isSignUp && !forgotPasswordMode && (
                     <>
                       <View style={styles.fieldGroup}>
                         <Text style={styles.fieldLabel}>Senha</Text>
@@ -807,14 +709,15 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                       </View>
                       <TouchableOpacity
                         style={styles.forgotPasswordLink}
-                        onPress={handleForgotPassword}
-                        disabled={isLoading || isResettingPassword}
+                        onPress={() => {
+                          setForgotPasswordMode(true);
+                          setError('');
+                          setSuccessMessage('');
+                          setShowValidationErrors(false);
+                        }}
+                        disabled={isLoading}
                       >
-                        {isResettingPassword ? (
-                          <ActivityIndicator size="small" color={COLORS.primary} />
-                        ) : (
-                          <Text style={styles.forgotPasswordText}>Esqueci a senha</Text>
-                        )}
+                        <Text style={styles.forgotPasswordText}>Esqueci a senha</Text>
                       </TouchableOpacity>
                     </>
                   )}
@@ -909,32 +812,56 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     </TouchableOpacity>
                   )}
 
+                  {/* Voltar ao login — após o botão principal no modo redefinir senha */}
+                  {!isSignUp && forgotPasswordMode && (
+                    <TouchableOpacity
+                      style={styles.backToLoginLink}
+                      onPress={() => {
+                        setForgotPasswordMode(false);
+                        setError('');
+                        setSuccessMessage('');
+                        setShowValidationErrors(false);
+                      }}
+                      disabled={isResettingPassword}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.backToLoginText}>Voltar ao login</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {!forgotPasswordMode && (
                   <View style={styles.orDivider}>
                     <View style={styles.orLine} />
                     <Text style={styles.orText}>ou</Text>
                     <View style={styles.orLine} />
                   </View>
-                  <TouchableOpacity
-                    style={[styles.googleButton, isGoogleLoading && styles.googleButtonDisabled]}
-                    onPress={handleGoogleSignIn}
-                    disabled={isLoading || isGoogleLoading}
-                    activeOpacity={0.8}
-                  >
-                    {isGoogleLoading ? (
-                      <ActivityIndicator size="small" color="#333" />
-                    ) : (
-                      <Text style={styles.googleButtonText}>Entrar com Google</Text>
-                    )}
-                  </TouchableOpacity>
-                  {Platform.OS === 'web' && (
-                    <Text style={styles.googleHint}>
-                      Login seguro. O navegador pode pedir para abrir o site de autenticação.
-                    </Text>
+                  )}
+                  {!forgotPasswordMode && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.googleButton, isGoogleLoading && styles.googleButtonDisabled]}
+                        onPress={handleGoogleSignIn}
+                        disabled={isLoading || isGoogleLoading}
+                        activeOpacity={0.8}
+                      >
+                        {isGoogleLoading ? (
+                          <ActivityIndicator size="small" color="#333" />
+                        ) : (
+                          <Text style={styles.googleButtonText}>Entrar com Google</Text>
+                        )}
+                      </TouchableOpacity>
+                      {Platform.OS === 'web' && (
+                        <Text style={styles.googleHint}>
+                          Login seguro. O navegador pode pedir para abrir o site de autenticação.
+                        </Text>
+                      )}
+                    </>
                   )}
                 </View>
               </Animated.View>
 
-              {/* Acesso rápido - estilo links no rodapé */}
+              {/* Acesso rápido - estilo links no rodapé (oculto no modo redefinir senha) */}
+              {!forgotPasswordMode && (
               <Animated.View style={[styles.quickAccess, { opacity: quickOpacity }]}>
                 <Text style={styles.quickAccessTitle}>Acesso rápido</Text>
                 <View style={styles.quickAccessRow}>
@@ -991,6 +918,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                   ))}
                 </View>
               </Animated.View>
+              )}
             </ContentWrapper>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -1169,32 +1097,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.04)',
     color: '#64748B',
   },
-  signUpVerifyBlock: {
-    marginBottom: 8,
-  },
-  signUpVerifyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 8,
-  },
-  signUpVerifyText: {
-    fontSize: 14,
-    color: '#64748B',
-    lineHeight: 20,
-    marginBottom: 6,
-  },
-  signUpVerifyEmail: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.primary,
-    marginBottom: 4,
-  },
-  signUpVerifyName: {
-    fontSize: 14,
-    color: '#475569',
-    marginBottom: 4,
-  },
   forgotPasswordLink: {
     alignSelf: 'flex-start',
     marginTop: -6,
@@ -1207,20 +1109,14 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '600',
   },
-  otpInput: {
-    textAlign: 'center',
-    letterSpacing: 8,
-    fontSize: 20,
+  backToLoginLink: {
+    alignSelf: 'center',
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  resendOtpLink: {
-    alignSelf: 'flex-start',
-    marginTop: 8,
-    marginBottom: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  resendOtpText: {
-    fontSize: 14,
+  backToLoginText: {
+    fontSize: 15,
     color: COLORS.primary,
     fontWeight: '600',
   },

@@ -2,11 +2,17 @@ import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '../types/supabase';
 
-type ExtraShape = { EXPO_PUBLIC_SUPABASE_URL?: string; EXPO_PUBLIC_SUPABASE_ANON_KEY?: string };
+type ExtraShape = {
+  EXPO_PUBLIC_SUPABASE_URL?: string;
+  EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
+  /** URL pública do app (web PWA / Vercel). Usada em links dos e-mails Auth (SMTP). */
+  EXPO_PUBLIC_WEB_URL?: string;
+};
 
 // Garante string e remove espaços/quebras/BOM (no Android o extra às vezes vem com \r\n ou tipo errado)
 function normalizeEnvValue(val: unknown): string {
@@ -60,9 +66,8 @@ function createSupabaseClientOnce(url: string, key: string): ReturnType<typeof c
         persistSession: true,
         detectSessionInUrl: Platform.OS === 'web',
         /**
-         * No iOS/Android, PKCE + OTP por e-mail (6 dígitos) pode retornar
-         * "Token has expired or is invalid". Implicit costuma alinhar com verifyOtp({ type: 'email' }).
-         * Na web mantemos o padrão da lib (PKCE) para OAuth/PWA.
+         * iOS/Android: implicit evita edge cases com tokens em alguns fluxos de deep link.
+         * Na web mantemos PKCE (padrão) para OAuth/PWA e links de confirmação de e-mail.
          */
         ...(Platform.OS !== 'web' ? { flowType: 'implicit' as const } : {}),
       },
@@ -130,6 +135,30 @@ export const isSupabaseConfigured = (): boolean => {
   return !!supabaseClient;
 };
 
+/**
+ * URL de retorno após cliques em links dos e-mails do Auth (reset de senha, magic link, etc.).
+ * Deve estar em Supabase → Authentication → URL Configuration → Redirect URLs.
+ * Prioridade: EXPO_PUBLIC_WEB_URL (produção) → na web `window.location.origin` → deep link Expo (`guestjovem://` / exp://...).
+ */
+export function getAuthEmailRedirectUrl(): string {
+  const extra = getExtra();
+  const fromEnv =
+    normalizeEnvValue(process.env.EXPO_PUBLIC_WEB_URL) ||
+    normalizeEnvValue(extra?.EXPO_PUBLIC_WEB_URL);
+  const withSlash = (u: string) => (u.endsWith('/') ? u : `${u}/`);
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (fromEnv) return withSlash(fromEnv);
+    return withSlash(window.location.origin);
+  }
+  if (fromEnv) return withSlash(fromEnv);
+  try {
+    return withSlash(Linking.createURL('/'));
+  } catch {
+    return 'guestjovem://';
+  }
+}
+
 // Auth Helper Functions
 export const signIn = async (email: string, password: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
@@ -138,26 +167,36 @@ export const signIn = async (email: string, password: string) => {
   return data;
 };
 
+/**
+ * Cadastro com confirmação por e-mail (template "Confirm signup" no Supabase).
+ * O trigger `handle_new_auth_user` cria a linha em `public.users` a partir de `user_metadata.name`.
+ * Se "Confirm email" estiver desligado no projeto, `data.session` vem preenchido e o usuário já entra logado.
+ */
 export const signUp = async (email: string, password: string, name: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const trimmedName = name.trim();
   const { data, error } = await supabaseClient.auth.signUp({
-    email,
+    email: email.trim(),
     password,
-    options: { data: { name: name.trim() } },
+    options: {
+      data: { name: trimmedName, full_name: trimmedName },
+      emailRedirectTo: getAuthEmailRedirectUrl(),
+    },
   });
   if (error) throw error;
 
-  if (data.user) {
-    const { error: profileError } = await supabaseClient.from('users').insert({
-      id: data.user.id,
-      email,
-      name: name.trim(),
-      role: 'user',
-      created_at: new Date().toISOString(),
-    });
-    if (profileError) {
-      if (profileError.code === '23505') return data;
-      throw profileError;
+  // Com sessão imediata (confirmação de e-mail desativada): garante perfil se o trigger não existir no projeto.
+  if (data.session && data.user) {
+    const { data: existing } = await supabaseClient.from('users').select('id').eq('id', data.user.id).maybeSingle();
+    if (!existing) {
+      const { error: profileError } = await supabaseClient.from('users').insert({
+        id: data.user.id,
+        email: data.user.email ?? email.trim(),
+        name: trimmedName,
+        role: 'user',
+        created_at: new Date().toISOString(),
+      });
+      if (profileError && profileError.code !== '23505') throw profileError;
     }
   }
 
@@ -170,115 +209,13 @@ export const signOut = async () => {
   if (error) throw error;
 };
 
-/** Envia email de redefinição de senha para o endereço informado. */
+/** Envia email de redefinição de senha para o endereço informado (usa SMTP do projeto se configurado). */
 export const resetPassword = async (email: string): Promise<void> => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email.trim());
-  if (error) throw error;
-};
-
-/**
- * Envia código de 6 dígitos por e-mail para **criação de conta** (fluxo Cadastrar).
- * No Supabase: Authentication → Email Templates → use {{ .Token }} no corpo do e-mail.
- * `shouldCreateUser: true` permite criar o usuário no Auth ao verificar o código.
- */
-export const sendSignUpEmailOtp = async (email: string): Promise<void> => {
-  if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { error } = await supabaseClient.auth.signInWithOtp({
-    email: email.trim().toLowerCase(),
-    options: { shouldCreateUser: true },
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: getAuthEmailRedirectUrl(),
   });
   if (error) throw error;
-};
-
-/** @deprecated Use sendSignUpEmailOtp (código só no cadastro). */
-export const sendEmailOtp = sendSignUpEmailOtp;
-
-/** Remove espaços e caracteres invisíveis; extrai sequência numérica (6–8 dígitos) do código. */
-function normalizeEmailOtpToken(raw: string): string {
-  const t = raw.replace(/\u200B/g, '').trim().replace(/\s+/g, '');
-  const digits = t.replace(/\D/g, '');
-  if (digits.length >= 6) return digits.slice(0, 8);
-  return t;
-}
-
-function shouldRetryVerifyOtpWithOtherType(err: { message?: string; code?: string; status?: number } | null): boolean {
-  if (!err) return false;
-  const msg = (err.message ?? '').toLowerCase();
-  if (msg.includes('rate') || msg.includes('too many')) return false;
-  return (
-    msg.includes('expired') ||
-    msg.includes('invalid') ||
-    err.code === 'otp_expired' ||
-    err.status === 400 ||
-    err.status === 401
-  );
-}
-
-/**
- * Verifica o código enviado no cadastro; inicia sessão.
- * Tenta `type: 'email'` (template Magic Link com {{ .Token }}) e, se falhar, `signup` (template "Confirm signup" com {{ .Token }}).
- */
-export const verifyEmailOtp = async (email: string, token: string): Promise<void> => {
-  if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const normalizedEmail = email.trim().toLowerCase();
-  const normalizedToken = normalizeEmailOtpToken(token);
-  if (normalizedToken.length < 6) {
-    throw new Error('Digite o código completo enviado por e-mail (geralmente 6 dígitos).');
-  }
-
-  const tryTypes = ['email', 'signup'] as const;
-  let lastError: { message?: string; code?: string; status?: number } | null = null;
-
-  for (const type of tryTypes) {
-    const { error } = await supabaseClient.auth.verifyOtp({
-      email: normalizedEmail,
-      token: normalizedToken,
-      type,
-    });
-    if (!error) return;
-    lastError = error;
-    if (!shouldRetryVerifyOtpWithOtherType(error)) break;
-  }
-
-  if (lastError) throw lastError;
-};
-
-/**
- * Após OTP validado no cadastro: define senha, nome no metadata e atualiza `public.users`.
- */
-export const setPasswordAndNameAfterSignUpOtp = async (name: string, password: string): Promise<void> => {
-  if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const trimmed = name.trim();
-  const { error: updErr } = await supabaseClient.auth.updateUser({
-    password,
-    data: { name: trimmed, full_name: trimmed },
-  });
-  if (updErr) throw updErr;
-
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  const user = session?.user;
-  if (!user?.id) throw new Error('Sessão inválida após atualizar perfil.');
-
-  const { data: existing } = await supabaseClient.from('users').select('id').eq('id', user.id).maybeSingle();
-  if (existing) {
-    const { error: e2 } = await supabaseClient.from('users').update({ name: trimmed }).eq('id', user.id);
-    if (e2) throw e2;
-  } else {
-    const { error: e3 } = await supabaseClient.from('users').insert({
-      id: user.id,
-      email: user.email ?? '',
-      name: trimmed,
-      role: 'user',
-      created_at: new Date().toISOString(),
-    });
-    if (e3) {
-      if (e3.code === '23505') {
-        const { error: e4 } = await supabaseClient.from('users').update({ name: trimmed }).eq('id', user.id);
-        if (e4) throw e4;
-      } else throw e3;
-    }
-  }
 };
 
 const GOOGLE_REDIRECT_SCHEME = 'guestjovem://google-auth';

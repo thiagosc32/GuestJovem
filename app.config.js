@@ -8,6 +8,8 @@
 // Se aparecer url=no ou key=no, as variáveis não estão sendo injetadas (nome exato e ambiente no expo.dev).
 const _url = (process.env.EXPO_PUBLIC_SUPABASE_URL || '').trim();
 const _key = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+/** URL pública do app (ex.: https://guestjovem.com) — links dos e-mails Auth / SMTP. */
+const _webUrl = (process.env.EXPO_PUBLIC_WEB_URL || '').trim();
 console.log('[app.config.js] SUPABASE_ENV_IN_BUILD: url=' + (_url ? 'yes' : 'no') + ' key=' + (_key ? 'yes' : 'no'));
 
 const config = {
@@ -52,6 +54,7 @@ const config = {
       // Embutir variáveis do EAS Build em extra (lidas no momento em que este arquivo é avaliado)
       EXPO_PUBLIC_SUPABASE_URL: _url,
       EXPO_PUBLIC_SUPABASE_ANON_KEY: _key,
+      EXPO_PUBLIC_WEB_URL: _webUrl,
     },
   },
 };
