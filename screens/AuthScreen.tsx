@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, Flame } from 'lucide-react-native';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { signIn, signUp, getGoogleSignInUrl, getCurrentUser, resetPassword, setSessionFromOAuthUrl, ensureUserProfileForOAuth } from '../services/supabase';
+import { signIn, signUp, getGoogleSignInUrl, getCurrentUser, resetPassword, setSessionFromOAuthUrl, ensureUserProfileForOAuth, sendEmailOtp, verifyEmailOtp } from '../services/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS } from '../constants/colors';
@@ -43,6 +43,11 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [otpStep, setOtpStep] = useState<'email' | 'code'>('email');
+  const [emailForOtp, setEmailForOtp] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [usePasswordLogin, setUsePasswordLogin] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
 
@@ -228,6 +233,59 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     }
   };
 
+  const handleSendOtp = async () => {
+    const emailTrim = email.trim();
+    if (!emailTrim) {
+      setShowValidationErrors(true);
+      setError('Digite seu e-mail.');
+      return;
+    }
+    if (!isValidEmail(emailTrim)) {
+      setShowValidationErrors(true);
+      setError('Informe um e-mail válido.');
+      return;
+    }
+    setError('');
+    setSuccessMessage('');
+    setIsSendingOtp(true);
+    try {
+      await sendEmailOtp(emailTrim);
+      setEmailForOtp(emailTrim);
+      setOtpStep('code');
+      setOtpCode('');
+      setSuccessMessage('Código enviado! Verifique seu e-mail e digite os 6 dígitos.');
+    } catch (err: any) {
+      setError(err?.message ?? 'Não foi possível enviar o código. Tente novamente.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    const code = otpCode.replace(/\D/g, '').slice(0, 6);
+    if (code.length !== 6) {
+      setError('Digite o código de 6 dígitos que você recebeu por e-mail.');
+      return;
+    }
+    if (!emailForOtp) {
+      setError('Sessão expirada. Solicite um novo código.');
+      return;
+    }
+    setError('');
+    setIsLoading(true);
+    try {
+      await verifyEmailOtp(emailForOtp, code);
+      await ensureUserProfileForOAuth();
+      const profile = await getCurrentUser();
+      const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
+      onAuthenticate(role);
+    } catch (err: any) {
+      setError(err?.message ?? 'Código inválido ou expirado. Tente novamente ou solicite um novo.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const popupCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -323,7 +381,17 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
 
   const primaryButtonLabel = isSignUp
     ? (Platform.OS === 'android' ? 'CRIAR CONTA' : 'Criar conta')
-    : (Platform.OS === 'android' ? 'ENTRAR' : 'Entrar');
+    : !usePasswordLogin && otpStep === 'email'
+      ? (Platform.OS === 'android' ? 'ENVIAR CÓDIGO' : 'Enviar código')
+      : (Platform.OS === 'android' ? 'ENTRAR' : 'Entrar');
+
+  const handlePrimaryPress = () => {
+    if (isSignUp || usePasswordLogin) return handleAuth();
+    if (otpStep === 'email') return handleSendOtp();
+    return handleVerifyOtp();
+  };
+
+  const isPrimaryLoading = isLoading || (!isSignUp && !usePasswordLogin && otpStep === 'email' && isSendingOtp);
 
   const hasEmailError = showValidationErrors && !email.trim();
   const hasPasswordError = showValidationErrors && (!password.trim() || (isSignUp && password.length < MIN_PASSWORD_LENGTH));
@@ -399,7 +467,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                   <View style={styles.tabContainer}>
                     <TouchableOpacity
                       style={[styles.tab, !isSignUp && styles.tabActive]}
-                      onPress={() => { setIsSignUp(false); setError(''); setSuccessMessage(''); setShowValidationErrors(false); }}
+                      onPress={() => { setIsSignUp(false); setError(''); setSuccessMessage(''); setShowValidationErrors(false); setOtpStep('email'); setOtpCode(''); }}
                       disabled={isLoading}
                       activeOpacity={0.8}
                     >
@@ -451,83 +519,137 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     </View>
                   )}
 
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>E-mail</Text>
-                    <TextInput
-                      style={[
-                        styles.fieldInput,
-                        focusedField === 'email' && styles.fieldInputFocused,
-                        hasEmailError && styles.fieldInputError,
-                      ]}
-                      placeholder="E-mail"
-                      placeholderTextColor="#888"
-                      value={email}
-                      onChangeText={(t) => { setEmail(t); if (showValidationErrors) setShowValidationErrors(false); }}
-                      onFocus={() => setFocusedField('email')}
-                      onBlur={() => setFocusedField(null)}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      textContentType="emailAddress"
-                      autoComplete="email"
-                      editable={!isLoading}
-                    />
-                  </View>
-
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>Senha</Text>
-                    <View
-                      style={[
-                        styles.passwordWrap,
-                        focusedField === 'password' && styles.fieldInputFocused,
-                        hasPasswordError && styles.fieldInputError,
-                      ]}
-                    >
+                  {/* E-mail: oculto na etapa "código" do login por OTP */}
+                  {!(!isSignUp && !usePasswordLogin && otpStep === 'code') && (
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>E-mail</Text>
                       <TextInput
-                        style={styles.passwordInput}
-                        placeholder="Senha"
+                        style={[
+                          styles.fieldInput,
+                          focusedField === 'email' && styles.fieldInputFocused,
+                          hasEmailError && styles.fieldInputError,
+                        ]}
+                        placeholder="E-mail"
                         placeholderTextColor="#888"
-                        value={password}
-                        onChangeText={(t) => { setPassword(t); if (showValidationErrors) setShowValidationErrors(false); }}
-                        onFocus={() => setFocusedField('password')}
+                        value={email}
+                        onChangeText={(t) => { setEmail(t); if (showValidationErrors) setShowValidationErrors(false); }}
+                        onFocus={() => setFocusedField('email')}
                         onBlur={() => setFocusedField(null)}
-                        secureTextEntry={!showPassword}
-                        textContentType={isSignUp ? 'newPassword' : 'password'}
-                        autoComplete={isSignUp ? 'password-new' : 'password'}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        textContentType="emailAddress"
+                        autoComplete="email"
                         editable={!isLoading}
                       />
+                    </View>
+                  )}
+
+                  {/* Login por código: etapa do código */}
+                  {!isSignUp && !usePasswordLogin && otpStep === 'code' && (
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>Código enviado para {emailForOtp}</Text>
+                      <TextInput
+                        style={[styles.fieldInput, styles.otpInput]}
+                        placeholder="000000"
+                        placeholderTextColor="#888"
+                        value={otpCode}
+                        onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        editable={!isLoading}
+                        autoFocus
+                      />
                       <TouchableOpacity
-                        style={styles.eyeBtn}
-                        onPress={() => setShowPassword((v) => !v)}
-                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        style={styles.resendOtpLink}
+                        onPress={handleSendOtp}
+                        disabled={isSendingOtp || isLoading}
                       >
-                        {showPassword ? (
-                          <EyeOff size={22} color="#555" />
+                        {isSendingOtp ? (
+                          <ActivityIndicator size="small" color={COLORS.primary} />
                         ) : (
-                          <Eye size={22} color="#555" />
+                          <Text style={styles.resendOtpText}>Reenviar código</Text>
                         )}
                       </TouchableOpacity>
                     </View>
-                  </View>
+                  )}
 
-                  {!isSignUp && (
+                  {/* Senha: exibida em Cadastrar ou em Entrar com senha */}
+                  {(isSignUp || usePasswordLogin) && (
+                    <>
+                      <View style={styles.fieldGroup}>
+                        <Text style={styles.fieldLabel}>Senha</Text>
+                        <View
+                          style={[
+                            styles.passwordWrap,
+                            focusedField === 'password' && styles.fieldInputFocused,
+                            hasPasswordError && styles.fieldInputError,
+                          ]}
+                        >
+                          <TextInput
+                            style={styles.passwordInput}
+                            placeholder="Senha"
+                            placeholderTextColor="#888"
+                            value={password}
+                            onChangeText={(t) => { setPassword(t); if (showValidationErrors) setShowValidationErrors(false); }}
+                            onFocus={() => setFocusedField('password')}
+                            onBlur={() => setFocusedField(null)}
+                            secureTextEntry={!showPassword}
+                            textContentType={isSignUp ? 'newPassword' : 'password'}
+                            autoComplete={isSignUp ? 'password-new' : 'password'}
+                            editable={!isLoading}
+                          />
+                          <TouchableOpacity
+                            style={styles.eyeBtn}
+                            onPress={() => setShowPassword((v) => !v)}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          >
+                            {showPassword ? (
+                              <EyeOff size={22} color="#555" />
+                            ) : (
+                              <Eye size={22} color="#555" />
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      {!isSignUp && (
+                        <TouchableOpacity
+                          style={styles.forgotPasswordLink}
+                          onPress={handleForgotPassword}
+                          disabled={isLoading || isResettingPassword}
+                        >
+                          {isResettingPassword ? (
+                            <ActivityIndicator size="small" color={COLORS.primary} />
+                          ) : (
+                            <Text style={styles.forgotPasswordText}>Esqueci a senha</Text>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+
+                  {/* Entrar com código: link para usar senha */}
+                  {!isSignUp && !usePasswordLogin && otpStep === 'email' && (
                     <TouchableOpacity
                       style={styles.forgotPasswordLink}
-                      onPress={handleForgotPassword}
-                      disabled={isLoading || isResettingPassword}
+                      onPress={() => { setUsePasswordLogin(true); setError(''); setSuccessMessage(''); }}
                     >
-                      {isResettingPassword ? (
-                        <ActivityIndicator size="small" color={COLORS.primary} />
-                      ) : (
-                        <Text style={styles.forgotPasswordText}>Esqueci a senha</Text>
-                      )}
+                      <Text style={styles.forgotPasswordText}>Entrar com senha</Text>
+                    </TouchableOpacity>
+                  )}
+                  {!isSignUp && usePasswordLogin && (
+                    <TouchableOpacity
+                      style={styles.forgotPasswordLink}
+                      onPress={() => { setUsePasswordLogin(false); setOtpStep('email'); setError(''); setSuccessMessage(''); }}
+                    >
+                      <Text style={styles.forgotPasswordText}>Usar código por e-mail</Text>
                     </TouchableOpacity>
                   )}
 
                   {Platform.OS === 'android' ? (
                     <Pressable
-                      onPress={handleAuth}
+                      onPress={handlePrimaryPress}
                       onPressIn={() => {
-                        if (isLoading) return;
+                        if (isPrimaryLoading) return;
                         Animated.timing(buttonScale, {
                           toValue: 0.98,
                           duration: 80,
@@ -542,14 +664,14 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                           tension: 200,
                         }).start();
                       }}
-                      disabled={isLoading}
+                      disabled={isPrimaryLoading}
                       android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
                       style={styles.primaryButtonWrap}
                     >
                       <Animated.View
                         style={[
                           styles.primaryButton,
-                          isLoading && styles.primaryButtonDisabled,
+                          isPrimaryLoading && styles.primaryButtonDisabled,
                           { transform: [{ scale: buttonScale }] },
                         ]}
                       >
@@ -559,7 +681,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                           end={{ x: 1, y: 0 }}
                           style={styles.primaryButtonGradient}
                         >
-                          {isLoading ? (
+                          {isPrimaryLoading ? (
                             <ActivityIndicator size="small" color="#fff" />
                           ) : (
                             <Text style={styles.primaryButtonText}>{primaryButtonLabel}</Text>
@@ -569,9 +691,9 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     </Pressable>
                   ) : (
                     <TouchableOpacity
-                      onPress={handleAuth}
+                      onPress={handlePrimaryPress}
                       onPressIn={() => {
-                        if (isLoading) return;
+                        if (isPrimaryLoading) return;
                         Animated.timing(buttonScale, {
                           toValue: 0.98,
                           duration: 80,
@@ -586,14 +708,14 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                           tension: 200,
                         }).start();
                       }}
-                      disabled={isLoading}
+                      disabled={isPrimaryLoading}
                       activeOpacity={1}
                       style={styles.primaryButtonWrap}
                     >
                       <Animated.View
                         style={[
                           styles.primaryButton,
-                          isLoading && styles.primaryButtonDisabled,
+                          isPrimaryLoading && styles.primaryButtonDisabled,
                           { transform: [{ scale: buttonScale }] },
                         ]}
                       >
@@ -603,7 +725,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                           end={{ x: 1, y: 0 }}
                           style={styles.primaryButtonGradient}
                         >
-                          {isLoading ? (
+                          {isPrimaryLoading ? (
                             <ActivityIndicator size="small" color="#fff" />
                           ) : (
                             <Text style={styles.primaryButtonText}>{primaryButtonLabel}</Text>
@@ -877,6 +999,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   forgotPasswordText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  otpInput: {
+    textAlign: 'center',
+    letterSpacing: 8,
+    fontSize: 20,
+  },
+  resendOtpLink: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    marginBottom: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  resendOtpText: {
     fontSize: 14,
     color: COLORS.primary,
     fontWeight: '600',

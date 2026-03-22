@@ -171,6 +171,34 @@ export const resetPassword = async (email: string): Promise<void> => {
   if (error) throw error;
 };
 
+/**
+ * Envia um código de 6 dígitos por e-mail para login sem senha (OTP).
+ * No Supabase: Authentication → Email Templates → use {{ .Token }} no template para enviar o código.
+ * Se o usuário não existir, será criado (shouldCreateUser: true).
+ */
+export const sendEmailOtp = async (email: string): Promise<void> => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email: email.trim().toLowerCase(),
+    options: { shouldCreateUser: true },
+  });
+  if (error) throw error;
+};
+
+/**
+ * Verifica o código de 6 dígitos enviado por e-mail e inicia a sessão.
+ * Após sucesso, use ensureUserProfileForOAuth() para criar perfil em users se necessário.
+ */
+export const verifyEmailOtp = async (email: string, token: string): Promise<void> => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { error } = await supabaseClient.auth.verifyOtp({
+    email: email.trim().toLowerCase(),
+    token: token.trim(),
+    type: 'email',
+  });
+  if (error) throw error;
+};
+
 const GOOGLE_REDIRECT_SCHEME = 'guestjovem://google-auth';
 
 /**

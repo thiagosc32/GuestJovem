@@ -27,11 +27,9 @@ function getCurrentWeekStart(): string {
  * 🟢 4–7 dias → strong (Cuidado saudável)
  * 🟡 2–3 dias → weakening (Cuidado frágil)
  * 🔴 1 dia → weak (Cuidado esporádico)
- * 🔴 0 dias (com histórico) → bones (Cuidado negligenciado)
- * 🟢 0 dias (usuário novo, sem histórico) → strong (começa com a melhor vida espiritual)
+ * 🔴 0 dias → bones (Cuidado negligenciado), inclusive conta nova sem prática na semana
  */
-function stateFromActiveDaysThisWeek(activeDays: number, isNewUser: boolean): CompanionStateKey {
-  if (activeDays === 0 && isNewUser) return 'strong';
+function stateFromActiveDaysThisWeek(activeDays: number): CompanionStateKey {
   if (activeDays >= COMPANION_ACTIVE_DAYS_THRESHOLDS.STRONG_MIN_DAYS && activeDays <= COMPANION_ACTIVE_DAYS_THRESHOLDS.STRONG_MAX_DAYS)
     return 'strong';
   if (
@@ -54,8 +52,7 @@ export async function getCompanionState(userId: string): Promise<SpiritualCompan
 
   const weekStart = getCurrentWeekStart();
   const activeDaysThisWeek = await getActiveDaysInWeek(userId, weekStart);
-  const isNewUser = (profile.total_xp === 0 && !profile.last_activity_date);
-  const state = stateFromActiveDaysThisWeek(activeDaysThisWeek, isNewUser);
+  const state = stateFromActiveDaysThisWeek(activeDaysThisWeek);
   const config = getCompanionStateConfig(state);
 
   return {

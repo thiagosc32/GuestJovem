@@ -129,9 +129,9 @@ Para o “Entrar com Google” e “Criar conta” funcionarem na web:
      - Se usar outro domínio (ex.: Vercel), adicione também `https://seu-dominio.vercel.app/` e `https://seu-dominio.vercel.app/**`.
    - Em desenvolvimento local, adicione `http://localhost:8081/` e `http://localhost:8081/**` (ou a porta que o Expo usar).
 
-2. **Mensagem “Prosseguir para … supabase.co”**  
-   Ao clicar em “Entrar com Google”, o navegador pode mostrar algo como “Prosseguir para ytfysvzkcdwfuftwwwyp.supabase.co”. Isso é **normal**: o login é feito nos servidores do Supabase (parceiro de autenticação). O usuário só é redirecionado para o seu domínio depois do login.  
-   Para no futuro mostrar um domínio próprio (ex.: “Prosseguir para auth.guestjovem.com”), é possível usar **Custom Auth Domain** do Supabase (recurso de planos pagos) ou self-hosted Auth; não é obrigatório para o fluxo funcionar.
+2. **Mensagem “Prosseguir para … supabase.co”**
+   Ao clicar em “Entrar com Google”, o navegador pode mostrar algo como “Prosseguir para ytfysvzkcdwfuftwwwyp.supabase.co”. Isso é **normal**: o login é feito nos servidores do Supabase (parceiro de autenticação). O usuário só é redirecionado para o seu domínio depois do login.
+   Para mostrar “Prosseguir para guestjovem” (ou auth.guestjovem.com), use **Custom Domain** ou **Vanity subdomain** do Supabase (planos pagos). Detalhes em **[LOGIN_E_CRIACAO_DE_CONTA.md](./LOGIN_E_CRIACAO_DE_CONTA.md)** (seção 9.4).
 
 ### 7. Conferências finais
 

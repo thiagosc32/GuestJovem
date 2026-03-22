@@ -88,7 +88,7 @@ O estado exibido (qual ovelha aparece) é baseado nos **dias ativos na semana at
 - **Cuidado saudável (strong):** 4–7 dias ativos na semana.
 - **Cuidado frágil (weakening):** 2–3 dias ativos.
 - **Cuidado esporádico (weak):** 1 dia ativo.
-- **Cuidado negligenciado (bones):** 0 dias ativos.
+- **Cuidado negligenciado (bones):** 0 dias ativos na semana atual — **inclui conta recém-criada** até o usuário registrar prática em pelo menos um dia da semana (não há estado “forte” só por ser novo).
 
 Calculado em `getCompanionState(userId)` via `getActiveDaysInWeek(userId, currentWeekStart)`.
 
