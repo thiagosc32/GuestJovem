@@ -71,6 +71,10 @@ import WebLayoutWrapper from './components/WebLayoutWrapper';
 import { COLORS } from './constants/colors';
 import { RootStackParamList, AdminTabParamList, UserTabParamList, UserDrawerParamList, PresençaStackParamList } from './types/navigation';
 
+/** Espaçamento vertical do menu inferior (um pouco mais alto na tela). */
+const TAB_BAR_PADDING_TOP = 8;
+const TAB_BAR_PADDING_BOTTOM = 6;
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const PresençaStackNav = createNativeStackNavigator<PresençaStackParamList>();
 const AdminTab = createBottomTabNavigator<AdminTabParamList>();
@@ -95,8 +99,8 @@ function AdminTabNavigator() {
         headerShown: false,
         tabBarStyle: {
           height: 60 + insets.bottom,
-          paddingBottom: 10 + insets.bottom,
-          paddingTop: 10,
+          paddingBottom: TAB_BAR_PADDING_BOTTOM + insets.bottom,
+          paddingTop: TAB_BAR_PADDING_TOP,
           backgroundColor: '#fff',
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
@@ -170,8 +174,8 @@ function UserTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
         userTabBarStyles.bar,
         {
           height: 60 + insets.bottom,
-          paddingBottom: 10 + insets.bottom,
-          paddingTop: 10,
+          paddingBottom: TAB_BAR_PADDING_BOTTOM + insets.bottom,
+          paddingTop: TAB_BAR_PADDING_TOP,
         },
       ]}
     >
@@ -246,8 +250,8 @@ function UserTabNavigator() {
         headerShown: false,
         tabBarStyle: {
           height: 60 + insets.bottom,
-          paddingBottom: 10 + insets.bottom,
-          paddingTop: 10,
+          paddingBottom: TAB_BAR_PADDING_BOTTOM + insets.bottom,
+          paddingTop: TAB_BAR_PADDING_TOP,
           backgroundColor: '#fff',
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
