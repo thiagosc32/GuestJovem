@@ -45,7 +45,8 @@ const config = {
     },
     plugins: ['./plugins/withAndroidBackCallback.js'],
     web: {
-      favicon: './assets/app-icon.png',
+      /** Ícone da aba do navegador (48px gerado a partir de assets/web-favicon-source.png) */
+      favicon: './assets/favicon-web.png',
     },
     extra: {
       eas: {

@@ -4,7 +4,10 @@
   "main": "index.ts",
   "expo": {
     "install": {
-      "exclude": ["react", "react-dom"]
+      "exclude": [
+        "react",
+        "react-dom"
+      ]
     }
   },
   "scripts": {
@@ -17,6 +20,7 @@
     "build:expo": "expo export --platform all --output-dir expo-build",
     "build:web:dev": "expo export --platform web --dev",
     "serve": "npx serve dist",
+    "generate:web-icons": "node scripts/generate-web-icons.js",
     "postinstall": "patch-package"
   },
   "dependencies": {
@@ -72,6 +76,7 @@
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.10",
     "patch-package": "^8.0.0",
+    "sharp": "^0.34.5",
     "typescript": "~5.9.2"
   },
   "private": true

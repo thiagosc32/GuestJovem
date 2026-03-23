@@ -34,7 +34,7 @@
       "package": "com.thiagosc31.GuestJovem"
     },
     "web": {
-      "favicon": "./assets/app-icon.png"
+      "favicon": "./assets/favicon-web.png"
     },
     "extra": {
       "eas": {
