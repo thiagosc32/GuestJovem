@@ -53,6 +53,8 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  /** Web em viewport largo: o navegador já mostra “revelar senha”; ocultamos o ícone duplicado no cadastro. */
+  const [isWebDesktop, setIsWebDesktop] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
 
@@ -66,6 +68,15 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const quickOpacity = useRef(new Animated.Value(0)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const DESKTOP_MIN_WIDTH = 768;
+    const update = () => setIsWebDesktop(window.innerWidth >= DESKTOP_MIN_WIDTH);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -434,6 +445,9 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   const hasConfirmPasswordError =
     showValidationErrors && isSignUp && passwordConfirm.length > 0 && password !== passwordConfirm;
 
+  /** Cadastro na web (desktop): só o controle nativo do input password; sem segundo botão do app. */
+  const hideSignupPasswordEye = Platform.OS === 'web' && isWebDesktop;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <LinearGradient
@@ -633,22 +647,24 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                             onChangeText={(t) => { setPassword(t); if (showValidationErrors) setShowValidationErrors(false); }}
                             onFocus={() => setFocusedField('password')}
                             onBlur={() => setFocusedField(null)}
-                            secureTextEntry={!showPassword}
+                            secureTextEntry={hideSignupPasswordEye ? true : !showPassword}
                             textContentType="newPassword"
                             autoComplete="password-new"
                             editable={!isLoading}
                           />
-                          <TouchableOpacity
-                            style={styles.eyeBtn}
-                            onPress={() => setShowPassword((v) => !v)}
-                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                          >
-                            {showPassword ? (
-                              <EyeOff size={22} color="#555" />
-                            ) : (
-                              <Eye size={22} color="#555" />
-                            )}
-                          </TouchableOpacity>
+                          {!hideSignupPasswordEye && (
+                            <TouchableOpacity
+                              style={styles.eyeBtn}
+                              onPress={() => setShowPassword((v) => !v)}
+                              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            >
+                              {showPassword ? (
+                                <EyeOff size={22} color="#555" />
+                              ) : (
+                                <Eye size={22} color="#555" />
+                              )}
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                       <View style={styles.fieldGroup}>
@@ -670,22 +686,24 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                             onChangeText={(t) => { setPasswordConfirm(t); if (showValidationErrors) setShowValidationErrors(false); }}
                             onFocus={() => setFocusedField('passwordConfirm')}
                             onBlur={() => setFocusedField(null)}
-                            secureTextEntry={!showConfirmPassword}
+                            secureTextEntry={hideSignupPasswordEye ? true : !showConfirmPassword}
                             textContentType="newPassword"
                             autoComplete="password-new"
                             editable={!isLoading}
                           />
-                          <TouchableOpacity
-                            style={styles.eyeBtn}
-                            onPress={() => setShowConfirmPassword((v) => !v)}
-                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                          >
-                            {showConfirmPassword ? (
-                              <EyeOff size={22} color="#555" />
-                            ) : (
-                              <Eye size={22} color="#555" />
-                            )}
-                          </TouchableOpacity>
+                          {!hideSignupPasswordEye && (
+                            <TouchableOpacity
+                              style={styles.eyeBtn}
+                              onPress={() => setShowConfirmPassword((v) => !v)}
+                              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            >
+                              {showConfirmPassword ? (
+                                <EyeOff size={22} color="#555" />
+                              ) : (
+                                <Eye size={22} color="#555" />
+                              )}
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                     </>
@@ -912,32 +930,6 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                   >
                     <Text style={styles.quickAccessBtnText}>Usuário</Text>
                   </TouchableOpacity>
-                </View>
-                <Text style={styles.quickAccessSubtitle}>Jornada (teste)</Text>
-                <View style={styles.quickAccessRow}>
-                  {[
-                    { email: 'semente@conviva.com', label: 'Ouvir', pwd: 'teste123' },
-                    { email: 'raiz@conviva.com', label: 'Seguir', pwd: 'teste123' },
-                    { email: 'caule@conviva.com', label: 'Permanecer', pwd: 'teste123' },
-                    { email: 'fruto@conviva.com', label: 'Frutificar', pwd: 'teste123' },
-                    { email: 'colheita@conviva.com', label: 'Multiplicar', pwd: 'teste123' },
-                  ].map((acc, i) => (
-                    <React.Fragment key={acc.email}>
-                      {i > 0 && <View style={styles.quickAccessDot} />}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setEmail(acc.email);
-                          setPassword(acc.pwd);
-                          setIsSignUp(false);
-                          setShowValidationErrors(false);
-                        }}
-                        disabled={isLoading}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.quickAccessBtnText}>{acc.label}</Text>
-                      </TouchableOpacity>
-                    </React.Fragment>
-                  ))}
                 </View>
               </Animated.View>
               )}
@@ -1216,14 +1208,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'rgba(255,255,255,0.6)',
     marginBottom: 12,
-    letterSpacing: 0.5,
-  },
-  quickAccessSubtitle: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 14,
-    marginBottom: 8,
     letterSpacing: 0.5,
   },
   quickAccessRow: {
