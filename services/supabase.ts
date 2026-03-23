@@ -175,6 +175,12 @@ export const signIn = async (email: string, password: string) => {
 export const signUp = async (email: string, password: string, name: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const trimmedName = name.trim();
+  /**
+   * Sempre limpar sessão local antes de cadastrar.
+   * Se o usuário foi apagado no Dashboard do Supabase, o refresh token pode continuar no AsyncStorage;
+   * o próximo signUp com o mesmo e-mail misturava sessão antiga com o retorno do Auth e o app entrava “direto”.
+   */
+  await supabaseClient.auth.signOut().catch(() => {});
   const { data, error } = await supabaseClient.auth.signUp({
     email: email.trim(),
     password,

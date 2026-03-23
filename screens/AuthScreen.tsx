@@ -285,7 +285,8 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
         return;
       }
 
-      // Fluxo normal: sem sessão até clicar no link do e-mail
+      // Fluxo normal: sem sessão até clicar no link do e-mail (garante que nada ficou em cache)
+      await signOut().catch(() => {});
       setSuccessMessage(
         `Enviamos um e-mail de confirmação para ${email.trim()}. Abra o link no e-mail para ativar a conta e depois faça login aqui.`
       );

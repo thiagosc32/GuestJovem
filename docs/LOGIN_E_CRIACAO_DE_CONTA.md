@@ -120,6 +120,12 @@ signUp(email, password, name) →
 2. Use o link de confirmação padrão do Supabase (`{{ .ConfirmationURL }}` ou equivalente no editor), para o usuário confirmar pelo **navegador/app** após clicar.
 3. Garanta que **Redirect URLs** inclua o mesmo domínio usado em `emailRedirectTo` / `EXPO_PUBLIC_WEB_URL`.
 
+### 5.4 Conta apagada no Dashboard e novo cadastro com o mesmo e-mail
+
+Se você **remove o usuário** em Authentication → Users no Supabase, o **aparelho** pode ainda guardar o refresh token no **AsyncStorage**. Ao cadastrar de novo com o mesmo e-mail, essa sessão antiga fazia o app entrar direto em vez de seguir o fluxo do e-mail de confirmação.
+
+O `signUp` no app chama **`signOut` antes** de `auth.signUp` para limpar tokens locais. Se algo estranho persistir, peça ao usuário para **desinstalar/reinstalar** o app ou limpar dados do app.
+
 ---
 
 ## 6. Redefinição de senha
