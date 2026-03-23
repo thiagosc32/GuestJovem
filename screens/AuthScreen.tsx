@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, Flame } from 'lucide-react-native';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as WebBrowser from 'expo-web-browser';
 import {
   signIn,
@@ -887,7 +888,10 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         {isGoogleLoading ? (
                           <ActivityIndicator size="small" color="#333" />
                         ) : (
-                          <Text style={styles.googleButtonText}>Entrar com Google</Text>
+                          <View style={styles.googleButtonRow}>
+                            <FontAwesome5 name="google" size={22} color="#4285F4" brand />
+                            <Text style={styles.googleButtonText}>Entrar com Google</Text>
+                          </View>
                         )}
                       </TouchableOpacity>
                       {Platform.OS === 'web' && (
@@ -1191,6 +1195,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   googleButtonDisabled: { opacity: 0.7 },
+  googleButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
   googleButtonText: { fontSize: 16, fontWeight: '700', color: '#333' },
   googleHint: {
     marginTop: 8,
