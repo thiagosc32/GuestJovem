@@ -29,6 +29,15 @@
         height: 100%;
         flex: 1;
       }
+      /*
+       * iOS Safari (e alguns navegadores mobile) dão zoom ao focar campos com
+       * fonte menor que 16px. Manter 16px mínimo preserva a escala da página.
+       */
+      input,
+      textarea,
+      select {
+        font-size: 16px !important;
+      }
     </style>
   </head>
 
