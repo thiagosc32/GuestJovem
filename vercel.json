@@ -1,5 +1,8 @@
 {
   "redirects": [
     { "source": "/Auth", "destination": "/", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/visit/(.*)", "destination": "/index.html" }
   ]
 }
