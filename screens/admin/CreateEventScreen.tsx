@@ -13,8 +13,6 @@ import {
   Modal,
   Platform,
   KeyboardAvoidingView,
-  TouchableWithoutFeedback,
-  Keyboard,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,6 +25,7 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../services/supabase';
 import Gradient from '../../components/ui/Gradient';
 import { WebDatePickerModal, WebTimePickerModal } from '../../components/WebDateTimePicker';
+import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { COLORS } from '../../constants/colors';
 import { RootStackParamList } from '../../types/navigation';
 
@@ -208,8 +207,7 @@ export default function CreateEventScreen() {
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={{ flex: 1 }}>
+        <DismissKeyboardView style={{ flex: 1 }}>
             <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
               <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                 <ArrowLeft size={24} color="#fff" />
@@ -360,8 +358,7 @@ export default function CreateEventScreen() {
                 {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>{eventToEdit ? 'Salvar Alterações' : 'Publicar Evento'}</Text>}
               </TouchableOpacity>
             </ScrollView>
-          </View>
-        </TouchableWithoutFeedback>
+        </DismissKeyboardView>
       </KeyboardAvoidingView>
 
       {/* --- DATA: Web = modal HTML5; Android = nativo; iOS = modal com spinner --- */}

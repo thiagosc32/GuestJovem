@@ -16,8 +16,6 @@ import {
   RefreshControl,
   Platform,
   KeyboardAvoidingView,
-  TouchableWithoutFeedback,
-  Keyboard,
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +24,7 @@ import { ArrowLeft, Plus, Calendar, Clock, Trash2, X, Edit3, ListOrdered } from 
 import DateTimePicker from '@react-native-community/datetimepicker';
 import MonthCalendar from '../../components/ui/MonthCalendar';
 import Gradient from '../../components/ui/Gradient';
+import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { WebDatePickerModal } from '../../components/WebDateTimePicker';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
@@ -432,7 +431,7 @@ export default function MinistryAgendaScreen() {
       {/* Modal: adicionar/editar programação */}
       <Modal visible={showAddModal} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <DismissKeyboardView style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={styles.modalBox}>
                 <View style={styles.modalHeader}>
@@ -490,14 +489,14 @@ export default function MinistryAgendaScreen() {
                 </ScrollView>
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </DismissKeyboardView>
         </KeyboardAvoidingView>
       </Modal>
 
       {/* Modal: escala do evento */}
       <Modal visible={showScheduleModal} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <DismissKeyboardView style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={styles.modalBox}>
                 <View style={styles.modalHeader}>
@@ -564,7 +563,7 @@ export default function MinistryAgendaScreen() {
                 )}
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </DismissKeyboardView>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>

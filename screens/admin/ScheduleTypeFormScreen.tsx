@@ -14,13 +14,12 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ArrowLeft, Plus, Trash2, X } from 'lucide-react-native';
 import Gradient from '../../components/ui/Gradient';
+import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY } from '../../constants/theme';
@@ -202,7 +201,7 @@ export default function ScheduleTypeFormScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <DismissKeyboardView style={{ flex: 1 }}>
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
@@ -291,7 +290,7 @@ export default function ScheduleTypeFormScreen() {
               )}
             </TouchableOpacity>
           </ScrollView>
-        </TouchableWithoutFeedback>
+        </DismissKeyboardView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

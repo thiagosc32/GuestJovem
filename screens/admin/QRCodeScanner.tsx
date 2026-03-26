@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar, Modal, ActivityIndicator, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, CameraView } from 'expo-camera';
 import { ArrowLeft, CheckCircle, XCircle } from 'lucide-react-native';
@@ -18,6 +18,8 @@ export default function QRCodeScanner() {
   const [scanned, setScanned] = useState(false);
   const [scanResult, setScanResult] = useState<{ success: boolean; name?: string; message: string } | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [manualCode, setManualCode] = useState('');
+  const [manualBusy, setManualBusy] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -85,6 +87,23 @@ export default function QRCodeScanner() {
     setScanned(false);
   };
 
+  const submitManualWeb = async () => {
+    const t = manualCode.trim();
+    if (!t) {
+      setScanResult({ success: false, message: 'Cole o texto do QR (ex.: FY:USER:...) ou o ID UUID do jovem.' });
+      setShowModal(true);
+      return;
+    }
+    setScanned(false);
+    setManualBusy(true);
+    try {
+      await handleBarCodeScanned({ type: 'qr', data: t });
+    } finally {
+      setManualBusy(false);
+      setManualCode('');
+    }
+  };
+
   if (Platform.OS === 'web') {
     return (
       <SafeAreaView style={{ flex: 1 }}>
@@ -97,9 +116,40 @@ export default function QRCodeScanner() {
             <View style={{ width: 40 }} />
           </View>
           <View style={styles.webMessage}>
-            <Text style={styles.webMessageText}>Leitura de QR Code não disponível na web.</Text>
-            <Text style={styles.webMessageSubtext}>Use o aplicativo móvel para escanear códigos QR de presença.</Text>
+            <Text style={styles.webMessageText}>Na web não há câmera de scanner.</Text>
+            <Text style={[styles.webMessageSubtext, { marginBottom: SPACING.MD }]}>
+              Abra o perfil do jovem no app, copie o conteúdo do QR ou peça o ID; cole abaixo para registrar presença.
+            </Text>
+            <TextInput
+              style={styles.webManualInput}
+              value={manualCode}
+              onChangeText={setManualCode}
+              placeholder="FY:USER:... ou UUID"
+              placeholderTextColor={COLORS.textLight}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!manualBusy}
+            />
+            <TouchableOpacity style={styles.webManualBtn} onPress={submitManualWeb} disabled={manualBusy} activeOpacity={0.85}>
+              {manualBusy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.webManualBtnText}>Registrar presença</Text>
+              )}
+            </TouchableOpacity>
           </View>
+          <Modal visible={showModal} transparent animationType="fade">
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalContainer}>
+                {scanResult?.success ? <CheckCircle size={64} color={COLORS.success} /> : <XCircle size={64} color={COLORS.error} />}
+                <Text style={styles.modalTitle}>{scanResult?.success ? 'Sucesso!' : 'Erro'}</Text>
+                <Text style={styles.modalMessage}>{scanResult?.message}</Text>
+                <TouchableOpacity style={styles.modalButton} onPress={handleClose}>
+                  <Text style={styles.modalButtonText}>OK</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </View>
       </SafeAreaView>
     );
@@ -272,6 +322,36 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     textAlign: 'center',
     color: COLORS.textSecondary,
+  },
+  webManualInput: {
+    alignSelf: 'stretch',
+    maxWidth: 420,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: BORDER_RADIUS.MD,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: COLORS.text,
+    backgroundColor: COLORS.surface,
+    marginBottom: SPACING.MD,
+  },
+  webManualBtn: {
+    alignSelf: 'stretch',
+    maxWidth: 420,
+    width: '100%',
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: BORDER_RADIUS.MD,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  webManualBtnText: {
+    ...TYPOGRAPHY.body,
+    color: '#fff',
+    fontWeight: '600',
   },
   permissionMessage: {
     flex: 1,

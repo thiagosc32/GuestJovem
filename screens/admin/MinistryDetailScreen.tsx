@@ -18,8 +18,6 @@ import {
   FlatList,
   Platform,
   KeyboardAvoidingView,
-  TouchableWithoutFeedback,
-  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -27,6 +25,7 @@ import { ArrowLeft, Plus, CheckCircle, Circle, Trash2, Calendar, Users, ListTodo
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import Gradient from '../../components/ui/Gradient';
+import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { WebDateInputInline } from '../../components/WebDateTimePicker';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
@@ -711,7 +710,7 @@ export default function MinistryDetailScreen() {
           style={{ flex: 1 }}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <DismissKeyboardView style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={styles.modalBox}>
                 <View style={styles.modalHeader}>
@@ -787,7 +786,7 @@ export default function MinistryDetailScreen() {
                 </ScrollView>
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </DismissKeyboardView>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -839,7 +838,7 @@ export default function MinistryDetailScreen() {
       {/* Modal: Foco do mês */}
       <Modal visible={showFocusModal} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <DismissKeyboardView style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={[styles.modalBox, styles.modalBoxTall]}>
                 <View style={styles.modalHeader}>
@@ -863,14 +862,14 @@ export default function MinistryDetailScreen() {
                 </ScrollView>
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </DismissKeyboardView>
         </KeyboardAvoidingView>
       </Modal>
 
       {/* Modal: adicionar membro */}
       <Modal visible={showMemberModal} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <DismissKeyboardView style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={[styles.modalBox, styles.modalBoxTall]}>
                 <View style={styles.modalHeader}>
@@ -911,14 +910,14 @@ export default function MinistryDetailScreen() {
                 </ScrollView>
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </DismissKeyboardView>
         </KeyboardAvoidingView>
       </Modal>
 
       {/* Modal: editar propósito */}
       <Modal visible={showPurposeModal} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <DismissKeyboardView style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={[styles.modalBox, styles.modalBoxTall]}>
                 <View style={styles.modalHeader}>
@@ -942,14 +941,14 @@ export default function MinistryDetailScreen() {
                 </ScrollView>
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </DismissKeyboardView>
         </KeyboardAvoidingView>
       </Modal>
 
       {/* Modal: editar membro */}
       <Modal visible={showMemberEditModal} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <DismissKeyboardView style={{ flex: 1 }}>
             <View style={styles.modalBackdrop}>
               <View style={styles.modalBox}>
                 <View style={styles.modalHeader}>
@@ -977,7 +976,7 @@ export default function MinistryDetailScreen() {
                 </ScrollView>
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </DismissKeyboardView>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>

@@ -1,3 +1,4 @@
+import './utils/initWebPolyfills';
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import * as Linking from 'expo-linking';

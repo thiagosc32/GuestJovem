@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet, Platform, StatusBar, Modal, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Alert } from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet, Platform, StatusBar, Modal, KeyboardAvoidingView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, CheckCircle, Trash2 } from 'lucide-react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import Gradient from '../../components/ui/Gradient';
+import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { createDevotional, deleteDevotional, supabase } from '../../services/supabase';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
@@ -138,8 +139,7 @@ export default function CreateDevotionalScreen() {
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={{ flex: 1 }}>
+        <DismissKeyboardView style={{ flex: 1 }}>
             <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
               <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                 <ArrowLeft size={24} color="#fff" />
@@ -310,8 +310,7 @@ export default function CreateDevotionalScreen() {
                 </View>
               </View>
             </Modal>
-          </View>
-        </TouchableWithoutFeedback>
+        </DismissKeyboardView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

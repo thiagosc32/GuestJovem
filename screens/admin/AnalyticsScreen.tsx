@@ -13,7 +13,7 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TrendingUp, Users, BookOpen, Heart, Calendar, ChevronRight, X } from 'lucide-react-native';
 import ProgressCard from '../../components/ProgressCard';
@@ -34,8 +34,12 @@ type DetailModalKey =
   | 'upcomingEvents'
   | null;
 
+/** Espaço reservado para a altura do tab bar admin (≈ App.tsx) + folga, só web. */
+const WEB_TAB_BAR_EXTRA = 88;
+
 export default function AnalyticsScreen() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
   const [detailModal, setDetailModal] = useState<DetailModalKey>(null);
@@ -101,7 +105,10 @@ export default function AnalyticsScreen() {
 
           <ScrollView
             style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              Platform.OS === 'web' && { paddingBottom: SPACING.XL + WEB_TAB_BAR_EXTRA + insets.bottom },
+            ]}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} colors={[COLORS.primary]} />}
           >

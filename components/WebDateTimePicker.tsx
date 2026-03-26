@@ -27,13 +27,17 @@ const webInputStyle: Record<string, unknown> = {
   padding: 14,
   fontSize: 16,
   width: '100%',
-  marginVertical: 8,
+  maxWidth: '100%',
+  marginTop: 8,
+  marginBottom: 8,
   borderRadius: 10,
   borderWidth: 1,
   borderColor: '#eee',
   backgroundColor: '#f9f9f9',
   color: '#212121',
   boxSizing: 'border-box',
+  display: 'block',
+  alignSelf: 'stretch',
 };
 
 export type WebDatePickerModalProps = {
@@ -146,6 +150,17 @@ export function WebDateInputInline({ value, onChange, minimumDate }: WebDateInpu
   });
 }
 
+const webOverlayExtra = isWeb
+  ? ({
+      position: 'fixed' as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 100000,
+    } as const)
+  : {};
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -153,14 +168,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
+    ...webOverlayExtra,
   },
   sheet: {
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 24,
     minWidth: 280,
-    maxWidth: 360,
+    maxWidth: 400,
     width: '100%',
+    alignSelf: 'center',
+    alignItems: 'stretch',
   },
   title: {
     fontSize: 18,
