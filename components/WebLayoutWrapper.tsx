@@ -16,8 +16,10 @@ export default function WebLayoutWrapper({ children }: { children: React.ReactNo
   }
 
   return (
-    <View style={styles.webOuter}>
-      <View style={[styles.webInner, { maxWidth: contentMaxWidth }]}>{children}</View>
+    <View style={[styles.webOuter, styles.webOuterFill]}>
+      <View style={[styles.webInner, styles.webInnerFill, { maxWidth: contentMaxWidth }]}>
+        {children}
+      </View>
     </View>
   );
 }
@@ -33,5 +35,14 @@ const styles = StyleSheet.create({
   webInner: {
     flex: 1,
     width: '100%',
+  },
+  /** Garante que o Stack + tab bar ocupem a viewport inteira na web (sem “cortar” o menu inferior). */
+  webOuterFill: {
+    // react-native-web aceita unidades CSS (dvh) em minHeight
+    minHeight: '100dvh' as any,
+    alignSelf: 'stretch',
+  },
+  webInnerFill: {
+    minHeight: '100dvh' as any,
   },
 });

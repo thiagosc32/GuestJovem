@@ -76,6 +76,23 @@ import { RootStackParamList, AdminTabParamList, UserTabParamList, UserDrawerPara
 const TAB_BAR_PADDING_TOP = 8;
 const TAB_BAR_PADDING_BOTTOM = 6;
 
+/** Na web, 60px aperta ícone+rótulo e a barra pode parecer “corta no meio”; reserva extra + safe area mínima. */
+function getTabBarInsets(insetsBottom: number) {
+  if (Platform.OS === 'web') {
+    const top = TAB_BAR_PADDING_TOP + 4;
+    const bottom = Math.max(insetsBottom, 12);
+    const row = 54;
+    const height = top + row + bottom;
+    return { paddingTop: top, paddingBottom: bottom, height, minHeight: height };
+  }
+  return {
+    paddingTop: TAB_BAR_PADDING_TOP,
+    paddingBottom: TAB_BAR_PADDING_BOTTOM + insetsBottom,
+    height: 60 + insetsBottom,
+    minHeight: 60 + insetsBottom,
+  };
+}
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const PresençaStackNav = createNativeStackNavigator<PresençaStackParamList>();
 const AdminTab = createBottomTabNavigator<AdminTabParamList>();
@@ -94,14 +111,13 @@ function PresençaStackNavigator() {
 
 function AdminTabNavigator() {
   const insets = useSafeAreaInsets();
+  const tabInsets = getTabBarInsets(insets.bottom);
   return (
     <AdminTab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          height: 60 + insets.bottom,
-          paddingBottom: TAB_BAR_PADDING_BOTTOM + insets.bottom,
-          paddingTop: TAB_BAR_PADDING_TOP,
+          ...tabInsets,
           backgroundColor: '#fff',
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
@@ -164,6 +180,7 @@ const VISIBLE_TAB_ROUTES: (keyof UserTabParamList)[] = [
 function UserTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
   const { state, descriptors, navigation } = props;
   const insets = useSafeAreaInsets();
+  const tabInsets = getTabBarInsets(insets.bottom);
   const visibleRoutes = state.routes.filter((r) =>
     VISIBLE_TAB_ROUTES.includes(r.name as keyof UserTabParamList)
   );
@@ -174,9 +191,10 @@ function UserTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
       style={[
         userTabBarStyles.bar,
         {
-          height: 60 + insets.bottom,
-          paddingBottom: TAB_BAR_PADDING_BOTTOM + insets.bottom,
-          paddingTop: TAB_BAR_PADDING_TOP,
+          height: tabInsets.height,
+          minHeight: tabInsets.minHeight,
+          paddingBottom: tabInsets.paddingBottom,
+          paddingTop: tabInsets.paddingTop,
         },
       ]}
     >
@@ -244,15 +262,17 @@ const userTabBarStyles = StyleSheet.create({
 /** Bottom Tab: só 4 itens visíveis (Início, Devocional, Eventos, Perfil). Jornada e Disciplinas são telas do mesmo Tab mas sem ícone no menu — assim o menu inferior aparece nelas quando abertas pelo drawer. */
 function UserTabNavigator() {
   const insets = useSafeAreaInsets();
+  const tabInsets = getTabBarInsets(insets.bottom);
   return (
     <UserTab.Navigator
       tabBar={(props) => <UserTabBar {...props} />}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          height: 60 + insets.bottom,
-          paddingBottom: TAB_BAR_PADDING_BOTTOM + insets.bottom,
-          paddingTop: TAB_BAR_PADDING_TOP,
+          height: tabInsets.height,
+          minHeight: tabInsets.minHeight,
+          paddingBottom: tabInsets.paddingBottom,
+          paddingTop: tabInsets.paddingTop,
           backgroundColor: '#fff',
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
