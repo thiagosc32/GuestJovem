@@ -20,18 +20,16 @@ export default function QRCodeScanner() {
   const [showModal, setShowModal] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [manualBusy, setManualBusy] = useState(false);
+  /** Na web: mostrar campo alternativo à câmera (rede, permissão negada, etc.) */
+  const [showWebManual, setShowWebManual] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS !== 'web') {
-      requestCameraPermission();
-    }
+    requestCameraPermission();
   }, []);
 
   const requestCameraPermission = async () => {
-    if (Platform.OS !== 'web') {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    }
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === 'granted');
   };
 
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
@@ -104,57 +102,6 @@ export default function QRCodeScanner() {
     }
   };
 
-  if (Platform.OS === 'web') {
-    return (
-      <SafeAreaView style={{ flex: 1 }}>
-        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <ArrowLeft size={24} color={COLORS.text} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Leitor de QR Code</Text>
-            <View style={{ width: 40 }} />
-          </View>
-          <View style={styles.webMessage}>
-            <Text style={styles.webMessageText}>Na web não há câmera de scanner.</Text>
-            <Text style={[styles.webMessageSubtext, { marginBottom: SPACING.MD }]}>
-              Abra o perfil do jovem no app, copie o conteúdo do QR ou peça o ID; cole abaixo para registrar presença.
-            </Text>
-            <TextInput
-              style={styles.webManualInput}
-              value={manualCode}
-              onChangeText={setManualCode}
-              placeholder="FY:USER:... ou UUID"
-              placeholderTextColor={COLORS.textLight}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!manualBusy}
-            />
-            <TouchableOpacity style={styles.webManualBtn} onPress={submitManualWeb} disabled={manualBusy} activeOpacity={0.85}>
-              {manualBusy ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.webManualBtnText}>Registrar presença</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-          <Modal visible={showModal} transparent animationType="fade">
-            <View style={styles.modalBackdrop}>
-              <View style={styles.modalContainer}>
-                {scanResult?.success ? <CheckCircle size={64} color={COLORS.success} /> : <XCircle size={64} color={COLORS.error} />}
-                <Text style={styles.modalTitle}>{scanResult?.success ? 'Sucesso!' : 'Erro'}</Text>
-                <Text style={styles.modalMessage}>{scanResult?.message}</Text>
-                <TouchableOpacity style={styles.modalButton} onPress={handleClose}>
-                  <Text style={styles.modalButtonText}>OK</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (hasPermission === null) {
     return (
       <SafeAreaView style={{ flex: 1 }}>
@@ -179,12 +126,46 @@ export default function QRCodeScanner() {
           <View style={styles.permissionMessage}>
             <XCircle size={64} color={COLORS.error} />
             <Text style={styles.permissionText}>Permissão de câmera negada</Text>
-            <Text style={styles.permissionSubtext}>Habilite o acesso à câmera nas configurações para escanear códigos QR.</Text>
+            <Text style={styles.permissionSubtext}>
+              {Platform.OS === 'web'
+                ? 'Permita o acesso à câmera no navegador (ícone na barra de endereço) ou use HTTPS. Também pode colar o código abaixo.'
+                : 'Habilite o acesso à câmera nas configurações para escanear códigos QR.'}
+            </Text>
             <TouchableOpacity style={styles.retryButton} onPress={requestCameraPermission}>
-              <Text style={styles.retryButtonText}>Solicitar Permissão</Text>
+              <Text style={styles.retryButtonText}>Solicitar permissão</Text>
             </TouchableOpacity>
+            {Platform.OS === 'web' && (
+              <>
+                <Text style={[styles.webDividerLabel, { marginTop: SPACING.XL }]}>Entrada manual</Text>
+                <TextInput
+                  style={[styles.webManualInput, { marginTop: SPACING.SM }]}
+                  value={manualCode}
+                  onChangeText={setManualCode}
+                  placeholder="FY:USER:... ou UUID"
+                  placeholderTextColor={COLORS.textLight}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!manualBusy}
+                />
+                <TouchableOpacity style={styles.webManualBtn} onPress={submitManualWeb} disabled={manualBusy} activeOpacity={0.85}>
+                  {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.webManualBtnText}>Registrar presença</Text>}
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
+        <Modal visible={showModal} transparent animationType="fade">
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalContainer}>
+              {scanResult?.success ? <CheckCircle size={64} color={COLORS.success} /> : <XCircle size={64} color={COLORS.error} />}
+              <Text style={styles.modalTitle}>{scanResult?.success ? 'Sucesso!' : 'Erro'}</Text>
+              <Text style={styles.modalMessage}>{scanResult?.message}</Text>
+              <TouchableOpacity style={styles.modalButton} onPress={handleClose}>
+                <Text style={styles.modalButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -202,6 +183,7 @@ export default function QRCodeScanner() {
 
         <CameraView
           style={styles.camera}
+          facing="back"
           onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
           barcodeScannerSettings={{
             barcodeTypes: ['qr'],
@@ -215,17 +197,41 @@ export default function QRCodeScanner() {
               <View style={[styles.corner, styles.bottomRight]} />
             </View>
             <Text style={styles.instructionText}>Posicione o QR code dentro da moldura</Text>
+            {Platform.OS === 'web' && (
+              <View style={styles.webManualBelowCamera}>
+                {!showWebManual ? (
+                  <TouchableOpacity onPress={() => setShowWebManual(true)} hitSlop={12}>
+                    <Text style={styles.webManualLink}>Ou digite o código manualmente</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TextInput
+                      style={styles.webManualInputOnCamera}
+                      value={manualCode}
+                      onChangeText={setManualCode}
+                      placeholder="FY:USER:... ou UUID"
+                      placeholderTextColor="rgba(255,255,255,0.6)"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!manualBusy}
+                    />
+                    <TouchableOpacity style={styles.webManualBtnSmall} onPress={submitManualWeb} disabled={manualBusy}>
+                      {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.webManualBtnText}>Registrar</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { setShowWebManual(false); setManualCode(''); }}>
+                      <Text style={styles.webManualCancel}>Fechar entrada manual</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
           </View>
         </CameraView>
 
         <Modal visible={showModal} transparent animationType="fade">
           <View style={styles.modalBackdrop}>
             <View style={styles.modalContainer}>
-              {scanResult?.success ? (
-                <CheckCircle size={64} color={COLORS.success} />
-              ) : (
-                <XCircle size={64} color={COLORS.error} />
-              )}
+              {scanResult?.success ? <CheckCircle size={64} color={COLORS.success} /> : <XCircle size={64} color={COLORS.error} />}
               <Text style={styles.modalTitle}>{scanResult?.success ? 'Sucesso!' : 'Erro'}</Text>
               <Text style={styles.modalMessage}>{scanResult?.message}</Text>
               <TouchableOpacity style={styles.modalButton} onPress={handleClose}>
@@ -265,6 +271,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingBottom: SPACING.LG,
   },
   scanArea: {
     width: 250,
@@ -306,22 +313,46 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginTop: SPACING.XL,
     textAlign: 'center',
+    paddingHorizontal: SPACING.MD,
   },
-  webMessage: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING.LG,
+  webManualBelowCamera: {
+    marginTop: SPACING.LG,
+    width: '100%',
+    maxWidth: 420,
+    paddingHorizontal: SPACING.MD,
+    alignItems: 'stretch',
   },
-  webMessageText: {
-    ...TYPOGRAPHY.h3,
+  webManualLink: {
+    ...TYPOGRAPHY.body,
+    color: '#fff',
     textAlign: 'center',
+    textDecorationLine: 'underline',
+    opacity: 0.95,
+  },
+  webManualInputOnCamera: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    borderRadius: BORDER_RADIUS.MD,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     marginBottom: SPACING.SM,
   },
-  webMessageSubtext: {
-    ...TYPOGRAPHY.body,
+  webManualBtnSmall: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    borderRadius: BORDER_RADIUS.MD,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  webManualCancel: {
+    ...TYPOGRAPHY.bodySmall,
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
-    color: COLORS.textSecondary,
+    marginTop: SPACING.SM,
   },
   webManualInput: {
     alignSelf: 'stretch',
@@ -352,6 +383,11 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     color: '#fff',
     fontWeight: '600',
+  },
+  webDividerLabel: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
   },
   permissionMessage: {
     flex: 1,
