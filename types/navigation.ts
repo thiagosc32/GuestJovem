@@ -8,7 +8,7 @@
 export type RootStackParamList = {
   Auth: undefined;
   UpdatePassword: undefined;
-  VisitorCheckIn: { eventId: string };
+  VisitorOnboarding: { token: string };
   AdminTabs: undefined;
   UserTabs: undefined;
   QRCodeScanner: { eventId?: string } | undefined;

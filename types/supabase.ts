@@ -396,6 +396,10 @@ export interface Database {
           name: string | null
           is_first_time: boolean
           contact_opt_in: boolean
+          phone: string | null
+          accepted_jesus: boolean
+          congregates: boolean
+          church_name: string | null
           created_at: string
         }
         Insert: {
@@ -405,6 +409,10 @@ export interface Database {
           name?: string | null
           is_first_time?: boolean
           contact_opt_in?: boolean
+          phone?: string | null
+          accepted_jesus?: boolean
+          congregates?: boolean
+          church_name?: string | null
           created_at?: string
         }
         Update: {
@@ -414,7 +422,40 @@ export interface Database {
           name?: string | null
           is_first_time?: boolean
           contact_opt_in?: boolean
+          phone?: string | null
+          accepted_jesus?: boolean
+          congregates?: boolean
+          church_name?: string | null
           created_at?: string
+        }
+      }
+      visitor_checkin_invites: {
+        Row: {
+          id: string
+          event_id: string
+          token: string
+          created_at: string
+          expires_at: string | null
+          is_active: boolean
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          event_id: string
+          token: string
+          created_at?: string
+          expires_at?: string | null
+          is_active?: boolean
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          event_id?: string
+          token?: string
+          created_at?: string
+          expires_at?: string | null
+          is_active?: boolean
+          created_by?: string | null
         }
       }
       achievements: {
@@ -741,6 +782,26 @@ export interface Database {
       get_active_youth_list: {
         Args: { days_back?: number }
         Returns: { id: string; name: string | null; avatar_url: string | null }[]
+      }
+      visitor_checkin_preview: {
+        Args: { p_token: string }
+        Returns: Json
+      }
+      visitor_checkin_submit: {
+        Args: {
+          p_token: string
+          p_name: string
+          p_is_first_time: boolean
+          p_phone: string | null
+          p_accepted_jesus: boolean
+          p_congregates: boolean
+          p_church_name: string | null
+        }
+        Returns: Json
+      }
+      visitor_checkin_invite_create: {
+        Args: { p_event_id: string }
+        Returns: Json
       }
     }
     Enums: {

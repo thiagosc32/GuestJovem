@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,14 @@ import QRCode from 'react-native-qrcode-svg';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
-import { getAttendanceRecords, createAttendanceRecord, getEvents, getAllUsers } from '../../services/supabase';
+import {
+  getAttendanceRecords,
+  createAttendanceRecord,
+  getEvents,
+  getAllUsers,
+  createVisitorCheckinInvite,
+  getVisitorOnboardingUrl,
+} from '../../services/supabase';
 
 type RecordDisplay = {
   id: string;
@@ -47,6 +54,9 @@ export default function AttendanceTracker() {
   const [showVisitorModal, setShowVisitorModal] = useState(false);
   const [visitorEvents, setVisitorEvents] = useState<{ id: string; title: string; date: string }[]>([]);
   const [selectedVisitorEventId, setSelectedVisitorEventId] = useState<string | null>(null);
+  const [visitorInviteToken, setVisitorInviteToken] = useState<string | null>(null);
+  const [visitorInviteLoading, setVisitorInviteLoading] = useState(false);
+  const [visitorInviteError, setVisitorInviteError] = useState<string | null>(null);
   const [events, setEvents] = useState<{ id: string; title: string; date: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -88,6 +98,34 @@ export default function AttendanceTracker() {
     else Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: false }).start();
   }, []);
 
+  useEffect(() => {
+    if (!selectedVisitorEventId) {
+      setVisitorInviteToken(null);
+      setVisitorInviteError(null);
+      return;
+    }
+    let cancelled = false;
+    setVisitorInviteLoading(true);
+    setVisitorInviteError(null);
+    setVisitorInviteToken(null);
+    createVisitorCheckinInvite(selectedVisitorEventId)
+      .then((t) => {
+        if (!cancelled) setVisitorInviteToken(t);
+      })
+      .catch((e: any) => {
+        if (!cancelled) {
+          setVisitorInviteToken(null);
+          setVisitorInviteError(e?.message ?? 'Não foi possível gerar o link');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setVisitorInviteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVisitorEventId]);
+
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date();
@@ -112,12 +150,10 @@ export default function AttendanceTracker() {
   const qrCount = filteredRecords.filter((r) => r.checkInMethod === 'qr').length;
   const manualCount = filteredRecords.filter((r) => r.checkInMethod === 'manual').length;
 
-  const getVisitorCheckInUrl = (eventId: string) => {
-    const base = (typeof window !== 'undefined' && window?.location?.origin)
-      ? window.location.origin
-      : (process.env.EXPO_PUBLIC_WEB_URL || 'https://fireyouth.app');
-    return `${base.replace(/\/$/, '')}/visitor/${eventId}`;
-  };
+  const visitorCheckinUrl = useMemo(
+    () => (visitorInviteToken ? getVisitorOnboardingUrl(visitorInviteToken) : ''),
+    [visitorInviteToken]
+  );
 
   const openAddModal = async () => {
     setShowAddModal(true);
@@ -135,6 +171,8 @@ export default function AttendanceTracker() {
   const openVisitorModal = async () => {
     setShowVisitorModal(true);
     setSelectedVisitorEventId(null);
+    setVisitorInviteToken(null);
+    setVisitorInviteError(null);
     try {
       const evs = await getEvents(50, 0);
       setVisitorEvents((evs ?? []).map((e: any) => ({ id: e.id, title: e.title, date: e.date })));
@@ -143,13 +181,19 @@ export default function AttendanceTracker() {
     }
   };
 
+  const closeVisitorModal = () => {
+    setShowVisitorModal(false);
+    setSelectedVisitorEventId(null);
+    setVisitorInviteToken(null);
+    setVisitorInviteError(null);
+  };
+
   const shareVisitorLink = async () => {
-    if (!selectedVisitorEventId) return;
-    const url = getVisitorCheckInUrl(selectedVisitorEventId);
+    if (!visitorCheckinUrl) return;
     try {
       await Share.share({
-        message: `Registre sua presença: ${url}`,
-        url: Platform.OS !== 'web' ? url : undefined,
+        message: `Registre sua presença: ${visitorCheckinUrl}`,
+        url: Platform.OS !== 'web' ? visitorCheckinUrl : undefined,
         title: 'Registrar presença',
       });
     } catch (_) {}
@@ -342,14 +386,14 @@ export default function AttendanceTracker() {
         </View>
       </Modal>
 
-      <Modal visible={showVisitorModal} animationType="slide" transparent>
+      <Modal visible={showVisitorModal} animationType="slide" transparent onRequestClose={closeVisitorModal}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Registrar visitante</Text>
-              <TouchableOpacity onPress={() => setShowVisitorModal(false)}><X size={24} color={COLORS.text} /></TouchableOpacity>
+              <TouchableOpacity onPress={closeVisitorModal}><X size={24} color={COLORS.text} /></TouchableOpacity>
             </View>
-            <Text style={styles.modalSubtitle}>O visitante escaneia o QR abaixo ou o link para registrar a própria presença.</Text>
+            <Text style={styles.modalSubtitle}>Cada evento gera um link exclusivo. O visitante escaneia o QR ou usa o link para preencher o formulário e confirmar presença.</Text>
             <Text style={styles.modalLabel}>Evento</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.modalScroll}>
               {visitorEvents.map((ev) => (
@@ -364,14 +408,22 @@ export default function AttendanceTracker() {
             </ScrollView>
             {selectedVisitorEventId && (
               <View style={styles.qrContainer}>
-                <View style={styles.qrWrapper}>
-                  <QRCode value={getVisitorCheckInUrl(selectedVisitorEventId)} size={200} />
-                </View>
-                <Text style={styles.qrHint}>Visitante escaneia e preenche 2 campos</Text>
-                <TouchableOpacity style={styles.shareButton} onPress={shareVisitorLink}>
-                  <Share2 size={20} color="#fff" />
-                  <Text style={styles.shareButtonText}>Enviar link</Text>
-                </TouchableOpacity>
+                {visitorInviteLoading ? (
+                  <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 24 }} />
+                ) : visitorInviteError ? (
+                  <Text style={{ color: COLORS.error, textAlign: 'center', marginVertical: 12 }}>{visitorInviteError}</Text>
+                ) : visitorCheckinUrl ? (
+                  <>
+                    <View style={styles.qrWrapper}>
+                      <QRCode value={visitorCheckinUrl} size={200} />
+                    </View>
+                    <Text style={styles.qrHint}>Link exclusivo — não reutiliza o QR de outro evento</Text>
+                    <TouchableOpacity style={styles.shareButton} onPress={shareVisitorLink}>
+                      <Share2 size={20} color="#fff" />
+                      <Text style={styles.shareButtonText}>Enviar link</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : null}
               </View>
             )}
           </View>

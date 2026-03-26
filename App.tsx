@@ -24,7 +24,7 @@ const isPasswordRecoveryUrl = (url: string) =>
 
 // IMPORTS DE TELAS EXISTENTES
 import AuthScreen from './screens/AuthScreen';
-import VisitorCheckInScreen from './screens/visitor/VisitorCheckInScreen';
+import VisitorOnboardingScreen from './screens/visitor/VisitorOnboardingScreen';
 import AdminDashboard from './screens/admin/AdminDashboard';
 import QRCodeScanner from './screens/admin/QRCodeScanner';
 import AttendanceTracker from './screens/admin/AttendanceTracker';
@@ -482,7 +482,7 @@ export default function App() {
             prefixes: [Linking.createURL(''), 'fireyouth://', 'guestjovem://'],
             config: {
               screens: {
-                VisitorCheckIn: 'visitor/:eventId',
+                VisitorOnboarding: 'visit/:token',
               },
             },
           }}
@@ -516,7 +516,7 @@ export default function App() {
                     <AuthScreen {...props} onAuthenticate={(role) => { setUserRole(role); setIsAuthenticated(true); }} />
                   )}
                 </Stack.Screen>
-                <Stack.Screen name="VisitorCheckIn" component={VisitorCheckInScreen} />
+                <Stack.Screen name="VisitorOnboarding" component={VisitorOnboardingScreen} />
               </>
             ) : (
               <>
@@ -525,6 +525,7 @@ export default function App() {
                 {userRole === 'admin' && (
                   <Stack.Screen name="AdminTabs" component={AdminTabNavigator} />
                 )}
+                <Stack.Screen name="VisitorOnboarding" component={VisitorOnboardingScreen} />
                 <Stack.Screen name="QRCodeScanner" component={QRCodeScanner} />
                 <Stack.Screen name="CreateDevotional" component={CreateDevotionalScreen} options={{ headerShown: false }} />
                 <Stack.Screen name="CreateAnnouncement" component={CreateAnnouncementScreen} options={{ headerShown: false }} />

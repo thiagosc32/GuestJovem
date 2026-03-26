@@ -159,6 +159,11 @@ export function getAuthEmailRedirectUrl(): string {
   }
 }
 
+/** Base pública do app (sem barra final) — links de QR/check-in na web e em builds nativos. */
+export function getPublicWebBaseUrl(): string {
+  return getAuthEmailRedirectUrl().replace(/\/$/, '');
+}
+
 // Auth Helper Functions
 export const signIn = async (email: string, password: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
@@ -1360,31 +1365,79 @@ export const deleteAttendanceRecord = async (recordId: string): Promise<void> =>
   if (error) throw error;
 };
 
-// ========== Visitantes (presença sem conta) ==========
+// ========== Visitantes (presença sem conta) — link exclusivo via RPC ==========
 
-/** Registra presença de visitante (Modo 1 ou 2). Pode ser anônimo ou vinculado a visitor_profile. */
-export const createVisitorPresence = async (params: {
-  eventId: string;
-  name?: string;
-  isFirstTime?: boolean;
-  contactOptIn?: boolean;
-  visitorProfileId?: string;
-}) => {
+export type VisitorCheckinPreviewResult =
+  | { valid: true; event: { id: string; title: string; date: string | null } }
+  | { valid: false; error: string };
+
+export async function previewVisitorCheckin(token: string): Promise<VisitorCheckinPreviewResult> {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
-    .from('event_visitors')
-    .insert({
-      event_id: params.eventId,
-      visitor_profile_id: params.visitorProfileId || null,
-      name: params.name?.trim() || null,
-      is_first_time: params.isFirstTime ?? true,
-      contact_opt_in: params.contactOptIn ?? false,
-    })
-    .select()
-    .single();
+  const { data, error } = await supabaseClient.rpc('visitor_checkin_preview', { p_token: token });
   if (error) throw error;
-  return data;
+  const row = data as { valid?: boolean; error?: string; event?: { id: string; title: string; date: string | null } };
+  if (row?.valid && row.event?.id) {
+    return { valid: true, event: row.event };
+  }
+  return { valid: false, error: String(row?.error ?? 'not_found') };
+}
+
+export type VisitorCheckinSubmitParams = {
+  token: string;
+  name: string;
+  isFirstTime: boolean;
+  phone?: string | null;
+  acceptedJesus: boolean;
+  congregates: boolean;
+  churchName?: string | null;
 };
+
+export async function submitVisitorCheckin(params: VisitorCheckinSubmitParams): Promise<void> {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('visitor_checkin_submit', {
+    p_token: params.token,
+    p_name: params.name.trim(),
+    p_is_first_time: params.isFirstTime,
+    p_phone: params.phone?.trim() || null,
+    p_accepted_jesus: params.acceptedJesus,
+    p_congregates: params.congregates,
+    p_church_name: params.congregates ? (params.churchName?.trim() || null) : null,
+  });
+  if (error) throw error;
+  const row = data as { success?: boolean; error?: string };
+  if (!row?.success) {
+    throw new Error(
+      row?.error === 'name_required'
+        ? 'Informe seu nome.'
+        : row?.error === 'invalid_or_expired_invite'
+          ? 'Link inválido ou expirado. Peça um novo QR ao time de recepção.'
+          : row?.error || 'Não foi possível registrar.'
+    );
+  }
+}
+
+/** Admin: gera token exclusivo para o evento (QR / link). Requer sessão admin. */
+export async function createVisitorCheckinInvite(eventId: string): Promise<string> {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('visitor_checkin_invite_create', { p_event_id: eventId });
+  if (error) throw error;
+  const row = data as { success?: boolean; token?: string; error?: string };
+  if (!row?.success || !row.token) {
+    const msg =
+      row?.error === 'forbidden'
+        ? 'Sem permissão para criar link (apenas admin).'
+        : row?.error === 'event_not_found'
+          ? 'Evento não encontrado.'
+          : row?.error || 'Não foi possível criar o convite.';
+    throw new Error(msg);
+  }
+  return row.token;
+}
+
+export function getVisitorOnboardingUrl(token: string): string {
+  const base = getPublicWebBaseUrl();
+  return `${base}/visit/${encodeURIComponent(token)}`;
+}
 
 /** Busca visitantes de um evento */
 export const getEventVisitors = async (eventId: string) => {

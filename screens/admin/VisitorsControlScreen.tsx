@@ -36,10 +36,14 @@ import { getAllEventVisitors, deleteEventVisitor, getEvents } from '../../servic
 type VisitorRow = {
   id: string;
   name: string;
+  phone: string | null;
   eventTitle: string;
   eventDate: string;
   isFirstTime: boolean;
   contactOptIn: boolean;
+  acceptedJesus: boolean;
+  congregates: boolean;
+  churchName: string | null;
   visitCount?: number;
   createdAt: string;
 };
@@ -66,10 +70,14 @@ export default function VisitorsControlScreen({ navigation }: { navigation: any 
           v.name?.trim() ||
           (v.visitor_profiles as any)?.name ||
           'Visitante',
+        phone: v.phone?.trim() ? v.phone.trim() : null,
         eventTitle: (v.events as any)?.title ?? 'Evento',
         eventDate: (v.events as any)?.date ?? '',
         isFirstTime: v.is_first_time ?? true,
         contactOptIn: v.contact_opt_in ?? false,
+        acceptedJesus: v.accepted_jesus ?? false,
+        congregates: v.congregates ?? false,
+        churchName: v.church_name?.trim() ? v.church_name.trim() : null,
         visitCount: (v.visitor_profiles as any)?.visit_count,
         createdAt: v.created_at,
       }));
@@ -95,7 +103,9 @@ export default function VisitorsControlScreen({ navigation }: { navigation: any 
     if (!q) return true;
     return (
       v.name.toLowerCase().includes(q) ||
-      v.eventTitle.toLowerCase().includes(q)
+      v.eventTitle.toLowerCase().includes(q) ||
+      (v.phone && v.phone.toLowerCase().includes(q)) ||
+      (v.churchName && v.churchName.toLowerCase().includes(q))
     );
   });
 
@@ -144,6 +154,7 @@ export default function VisitorsControlScreen({ navigation }: { navigation: any 
         </TouchableOpacity>
       </View>
       <Text style={styles.cardEvent}>{item.eventTitle}</Text>
+      {item.phone ? <Text style={styles.cardPhone}>Tel. {item.phone}</Text> : null}
       <View style={styles.cardMeta}>
         <Text style={styles.cardDate}>
           {item.eventDate
@@ -169,6 +180,18 @@ export default function VisitorsControlScreen({ navigation }: { navigation: any 
         {item.contactOptIn && (
           <View style={[styles.badge, styles.badgeContact]}>
             <Text style={styles.badgeText}>Contato OK</Text>
+          </View>
+        )}
+        {item.acceptedJesus && (
+          <View style={[styles.badge, styles.badgeJesus]}>
+            <Text style={styles.badgeText}>Aceitou Jesus</Text>
+          </View>
+        )}
+        {item.congregates && (
+          <View style={[styles.badge, styles.badgeChurch]}>
+            <Text style={styles.badgeText}>
+              Congreg{item.churchName ? `: ${item.churchName}` : 'a'}
+            </Text>
           </View>
         )}
       </View>
@@ -376,14 +399,17 @@ const styles = StyleSheet.create({
   cardName: { ...TYPOGRAPHY.h4, color: COLORS.text },
   deleteBtn: { padding: 4 },
   cardEvent: { ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginBottom: 4 },
+  cardPhone: { ...TYPOGRAPHY.bodySmall, color: COLORS.text, marginBottom: 4, fontWeight: '500' },
   cardMeta: { flexDirection: 'row', gap: 12, marginBottom: SPACING.SM },
   cardDate: { fontSize: 13, color: COLORS.textSecondary },
   cardTime: { fontSize: 13, color: COLORS.textSecondary },
   cardVisits: { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
-  badges: { flexDirection: 'row', gap: 8 },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: BORDER_RADIUS.SM },
   badgeFirst: { backgroundColor: `${COLORS.info}20` },
   badgeContact: { backgroundColor: `${COLORS.success}20` },
+  badgeJesus: { backgroundColor: `${COLORS.secondary}20` },
+  badgeChurch: { backgroundColor: `${COLORS.spiritualOrange}20` },
   badgeText: { fontSize: 12, fontWeight: '600', color: COLORS.text },
   empty: {
     alignItems: 'center',
