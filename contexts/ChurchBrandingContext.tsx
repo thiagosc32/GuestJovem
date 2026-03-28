@@ -6,6 +6,7 @@ export type ChurchBranding = {
   id: string;
   name: string;
   ministry_name: string;
+  ministry_slogan: string | null;
   logo_url: string | null;
   primary_color: string | null;
   secondary_color: string | null;

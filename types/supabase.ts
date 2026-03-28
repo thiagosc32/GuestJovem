@@ -52,6 +52,7 @@ export interface Database {
           id: string
           name: string
           ministry_name: string
+          ministry_slogan: string | null
           logo_url: string | null
           primary_color: string | null
           secondary_color: string | null
@@ -65,6 +66,7 @@ export interface Database {
           id?: string
           name: string
           ministry_name?: string
+          ministry_slogan?: string | null
           logo_url?: string | null
           primary_color?: string | null
           secondary_color?: string | null
@@ -78,6 +80,7 @@ export interface Database {
           id?: string
           name?: string
           ministry_name?: string
+          ministry_slogan?: string | null
           logo_url?: string | null
           primary_color?: string | null
           secondary_color?: string | null
@@ -899,7 +902,12 @@ export interface Database {
         Returns: Json
       }
       super_admin_create_church: {
-        Args: { p_name: string; p_ministry_name: string; p_invite_code?: string | null }
+        Args: {
+          p_name: string
+          p_ministry_name: string
+          p_invite_code?: string | null
+          p_admin_email?: string | null
+        }
         Returns: Json
       }
       super_admin_list_churches: {
@@ -908,6 +916,22 @@ export interface Database {
       }
       super_admin_add_church_invite: {
         Args: { p_church_id: string; p_code?: string | null }
+        Returns: Json
+      }
+      super_admin_get_church_admins: {
+        Args: { p_church_id: string }
+        Returns: Json
+      }
+      super_admin_remove_church_admin: {
+        Args: { p_church_id: string; p_user_id: string }
+        Returns: Json
+      }
+      super_admin_clear_church_admin_slots: {
+        Args: { p_church_id: string }
+        Returns: Json
+      }
+      super_admin_assign_church_admin: {
+        Args: { p_church_id: string; p_email: string }
         Returns: Json
       }
       super_admin_set_church_status: {
@@ -921,6 +945,7 @@ export interface Database {
       church_admin_update_branding: {
         Args: {
           p_ministry_name?: string | null
+          p_ministry_slogan?: string | null
           p_logo_url?: string | null
           p_primary_color?: string | null
           p_secondary_color?: string | null

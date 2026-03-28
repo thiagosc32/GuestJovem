@@ -1,6 +1,7 @@
 import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PENDING_CHURCH_INVITE_KEY } from '../constants/tenantInvite';
 import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
@@ -212,6 +213,7 @@ export const signOut = async () => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const { error } = await supabaseClient.auth.signOut();
   if (error) throw error;
+  await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
 };
 
 /** Envia email de redefinição de senha para o endereço informado (usa SMTP do projeto se configurado). */
@@ -264,17 +266,19 @@ export const ensureUserProfileForOAuth = async (): Promise<void> => {
   const { data: { session } } = await supabaseClient.auth.getSession();
   const user = session?.user;
   if (!user) return;
-  const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-  const { PENDING_CHURCH_INVITE_KEY } = await import('../constants/tenantInvite');
   const pending = (await AsyncStorage.getItem(PENDING_CHURCH_INVITE_KEY))?.trim();
-  if (pending) {
-    try {
-      await supabaseClient.rpc('claim_church_invite_for_current_user', { p_code: pending });
-    } catch {
-      /* best-effort: rede / cliente */
-    }
-    await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY);
+  if (!pending) return;
+  const metaCode = (user.user_metadata?.invite_code as string | undefined)?.trim();
+  if (metaCode && pending.toLowerCase() !== metaCode.toLowerCase()) {
+    await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
+    return;
   }
+  try {
+    await supabaseClient.rpc('claim_church_invite_for_current_user', { p_code: pending });
+  } catch {
+    /* best-effort: rede / cliente */
+  }
+  await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY);
 };
 
 export { GOOGLE_REDIRECT_SCHEME };
@@ -312,6 +316,7 @@ export type ChurchBrandingRow = {
   id: string;
   name: string;
   ministry_name: string;
+  ministry_slogan: string | null;
   logo_url: string | null;
   primary_color: string | null;
   secondary_color: string | null;
@@ -321,7 +326,7 @@ export const getChurchBrandingById = async (churchId: string): Promise<ChurchBra
   if (!supabaseClient) return null;
   const { data, error } = await supabaseClient
     .from('churches')
-    .select('id, name, ministry_name, logo_url, primary_color, secondary_color')
+    .select('id, name, ministry_name, ministry_slogan, logo_url, primary_color, secondary_color')
     .eq('id', churchId)
     .maybeSingle();
   if (error || !data) return null;
@@ -339,6 +344,7 @@ export const previewChurchInvite = async (
     church?: {
       name: string;
       ministry_name: string;
+      ministry_slogan: string | null;
       logo_url: string | null;
       primary_color: string | null;
       secondary_color: string | null;
@@ -353,6 +359,7 @@ export const previewChurchInvite = async (
       id: '',
       name: ch.name,
       ministry_name: ch.ministry_name,
+      ministry_slogan: ch.ministry_slogan ?? null,
       logo_url: ch.logo_url,
       primary_color: ch.primary_color,
       secondary_color: ch.secondary_color,
@@ -369,13 +376,25 @@ export const getTenantProvisioningMode = async (): Promise<'manual' | 'stripe' |
   return 'both';
 };
 
-/** Após login (e-mail/senha): aplica convite pendente em AsyncStorage e limpa. */
+/**
+ * Após login (e-mail/senha): aplica convite pendente em AsyncStorage e limpa.
+ * Se o utilizador já tem invite_code no metadata (cadastro com convite) e o código em
+ * storage for outro, só remove o storage — evita convite antigo sobrescrever a igreja certa.
+ */
 export const claimAndClearPendingChurchInvite = async (): Promise<void> => {
   if (!supabaseClient) return;
-  const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-  const { PENDING_CHURCH_INVITE_KEY } = await import('../constants/tenantInvite');
   const pending = (await AsyncStorage.getItem(PENDING_CHURCH_INVITE_KEY))?.trim();
   if (!pending) return;
+
+  const {
+    data: { session },
+  } = await supabaseClient.auth.getSession();
+  const metaCode = (session?.user?.user_metadata?.invite_code as string | undefined)?.trim();
+  if (metaCode && pending.toLowerCase() !== metaCode.toLowerCase()) {
+    await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
+    return;
+  }
+
   try {
     await supabaseClient.rpc('claim_church_invite_for_current_user', { p_code: pending });
   } catch {
@@ -391,12 +410,18 @@ export const superAdminListChurches = async (): Promise<unknown> => {
   return data;
 };
 
-export const superAdminCreateChurch = async (name: string, ministryName: string, inviteCode?: string | null) => {
+export const superAdminCreateChurch = async (
+  name: string,
+  ministryName: string,
+  inviteCode?: string | null,
+  adminEmail?: string | null
+) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const { data, error } = await supabaseClient.rpc('super_admin_create_church', {
     p_name: name,
     p_ministry_name: ministryName,
     p_invite_code: inviteCode ?? undefined,
+    p_admin_email: adminEmail?.trim() ? adminEmail.trim() : undefined,
   });
   if (error) throw error;
   return data;
@@ -423,6 +448,44 @@ export const superAdminAddChurchInvite = async (churchId: string, inviteCode?: s
   return data;
 };
 
+export const superAdminGetChurchAdmins = async (churchId: string) => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_get_church_admins', {
+    p_church_id: churchId,
+  });
+  if (error) throw error;
+  return data;
+};
+
+export const superAdminRemoveChurchAdmin = async (churchId: string, userId: string) => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_remove_church_admin', {
+    p_church_id: churchId,
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return data;
+};
+
+export const superAdminClearChurchAdminSlots = async (churchId: string) => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_clear_church_admin_slots', {
+    p_church_id: churchId,
+  });
+  if (error) throw error;
+  return data;
+};
+
+export const superAdminAssignChurchAdmin = async (churchId: string, email: string) => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_assign_church_admin', {
+    p_church_id: churchId,
+    p_email: email.trim(),
+  });
+  if (error) throw error;
+  return data;
+};
+
 export const superAdminSetTenantProvisioningMode = async (mode: 'manual' | 'stripe' | 'both') => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const { data, error } = await supabaseClient.rpc('super_admin_set_tenant_provisioning_mode', { p_mode: mode });
@@ -432,6 +495,7 @@ export const superAdminSetTenantProvisioningMode = async (mode: 'manual' | 'stri
 
 export const churchAdminUpdateBranding = async (params: {
   ministryName?: string;
+  ministrySlogan?: string | null;
   logoUrl?: string | null;
   primaryColor?: string | null;
   secondaryColor?: string | null;
@@ -439,6 +503,7 @@ export const churchAdminUpdateBranding = async (params: {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const { data, error } = await supabaseClient.rpc('church_admin_update_branding', {
     p_ministry_name: params.ministryName ?? undefined,
+    p_ministry_slogan: params.ministrySlogan !== undefined ? params.ministrySlogan : undefined,
     p_logo_url: params.logoUrl ?? undefined,
     p_primary_color: params.primaryColor ?? undefined,
     p_secondary_color: params.secondaryColor ?? undefined,

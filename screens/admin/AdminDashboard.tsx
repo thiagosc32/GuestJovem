@@ -1,4 +1,4 @@
-import { supabase, deleteDevotional, getAdminAnalytics, getAppSetting, setAppSetting } from '../../services/supabase';
+import { supabase, signOut, deleteDevotional, getAdminAnalytics, getAppSetting, setAppSetting } from '../../services/supabase';
 import React, { useRef, useEffect, useState } from 'react';
 import { 
   View, 
@@ -371,7 +371,7 @@ const handleDeleteEvent = async (eventId: string, eventTitle: string) => {
     setIsLoggingOut(true);
     try {
       await AsyncStorage.clear();
-      await supabase.auth.signOut();
+      await signOut();
       // O listener onAuthStateChange no App.tsx irá atualizar o estado e exibir a tela de login
     } catch (error: any) {
       console.error('Erro ao sair:', error.message);

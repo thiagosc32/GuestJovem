@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,8 +28,19 @@ import {
   setSessionFromOAuthUrl,
   ensureUserProfileForOAuth,
   claimAndClearPendingChurchInvite,
+  previewChurchInvite,
 } from '../services/supabase';
 import { PENDING_CHURCH_INVITE_KEY } from '../constants/tenantInvite';
+import { useFocusEffect } from '@react-navigation/native';
+import { Image } from 'expo-image';
+import {
+  type InviteBrandingSnapshot,
+  inviteGradientColors,
+  inviteAccentColor,
+  inviteHeaderTitle,
+  inviteHeaderTagline,
+  isLikelyLogoUrl,
+} from '../utils/authInviteTheme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS } from '../constants/colors';
@@ -87,6 +98,55 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const quickOpacity = useRef(new Animated.Value(0)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
+
+  const [inviteBranding, setInviteBranding] = useState<InviteBrandingSnapshot | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const code = (await AsyncStorage.getItem(PENDING_CHURCH_INVITE_KEY))?.trim();
+          if (!code) {
+            if (!cancelled) setInviteBranding(null);
+            return;
+          }
+          const res = await previewChurchInvite(code);
+          if (cancelled) return;
+          if (res.valid && res.church) {
+            setInviteBranding({
+              name: res.church.name ?? '',
+              ministry_name: res.church.ministry_name ?? '',
+              ministry_slogan: res.church.ministry_slogan ?? null,
+              logo_url: res.church.logo_url ?? null,
+              primary_color: res.church.primary_color ?? null,
+              secondary_color: res.church.secondary_color ?? null,
+            });
+          } else {
+            setInviteBranding(null);
+            await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY);
+          }
+        } catch {
+          if (!cancelled) setInviteBranding(null);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
+  const gradientColors = useMemo(() => inviteGradientColors(inviteBranding), [inviteBranding]);
+  const accentColor = useMemo(() => inviteAccentColor(inviteBranding), [inviteBranding]);
+  const headerTitleOverride = inviteHeaderTitle(inviteBranding);
+  const headerTaglineText = inviteHeaderTagline(inviteBranding);
+  const logoUri =
+    inviteBranding && isLikelyLogoUrl(inviteBranding.logo_url) ? inviteBranding.logo_url!.trim() : null;
+
+  const inputFocusedStyle = useMemo(
+    () => [styles.fieldInputFocused, { borderColor: accentColor }],
+    [accentColor]
+  );
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -304,6 +364,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     try {
       const pending = (await AsyncStorage.getItem(PENDING_CHURCH_INVITE_KEY))?.trim() ?? null;
       const data = await signUp(email.trim(), password, name.trim(), pending);
+      await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
       const user = data.user;
       const confirmed = Boolean(user?.email_confirmed_at);
 
@@ -478,9 +539,12 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
   const hideSignupPasswordEye = Platform.OS === 'web' && isWebDesktop;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: gradientColors[0] }]}
+      edges={['top', 'left', 'right']}
+    >
       <LinearGradient
-        colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+        colors={gradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.gradientBackground}
@@ -508,7 +572,16 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     },
                   ]}
                 >
-                  <Flame size={48} color="#fff" strokeWidth={1.5} />
+                  {logoUri ? (
+                    <Image
+                      source={{ uri: logoUri }}
+                      style={styles.logoImage}
+                      contentFit="contain"
+                      accessibilityLabel="Logo"
+                    />
+                  ) : (
+                    <Flame size={48} color="#fff" strokeWidth={1.5} />
+                  )}
                 </Animated.View>
                 <Animated.View
                   style={[
@@ -519,12 +592,20 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     },
                   ]}
                 >
-                  <Text style={styles.brandName}>
-                    Guest <Text style={styles.brandBold}>JOVEM</Text>
-                  </Text>
+                  {headerTitleOverride ? (
+                    <Text style={styles.brandNameSingle} numberOfLines={3}>
+                      {headerTitleOverride}
+                    </Text>
+                  ) : (
+                    <Text style={styles.brandName}>
+                      Guest <Text style={styles.brandBold}>JOVEM</Text>
+                    </Text>
+                  )}
                 </Animated.View>
                 <Animated.View style={[styles.taglineWrap, { opacity: taglineOpacity }]}>
-                  <Text style={styles.tagline}>Conectando jovens na fé</Text>
+                  <Text style={styles.tagline} numberOfLines={2}>
+                    {headerTaglineText}
+                  </Text>
                 </Animated.View>
               </View>
 
@@ -558,8 +639,10 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                       disabled={isLoading}
                       activeOpacity={0.8}
                     >
-                      <LogIn size={18} color={!isSignUp ? COLORS.primary : 'rgba(255,255,255,0.8)'} strokeWidth={2} />
-                      <Text style={[styles.tabText, !isSignUp && styles.tabTextActive]}>Entrar</Text>
+                      <LogIn size={18} color={!isSignUp ? accentColor : 'rgba(255,255,255,0.8)'} strokeWidth={2} />
+                      <Text style={[styles.tabText, !isSignUp && styles.tabTextActive, !isSignUp && { color: accentColor }]}>
+                        Entrar
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.tab, isSignUp && styles.tabActive]}
@@ -574,8 +657,10 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                       disabled={isLoading}
                       activeOpacity={0.8}
                     >
-                      <UserPlus size={18} color={isSignUp ? COLORS.primary : 'rgba(255,255,255,0.8)'} strokeWidth={2} />
-                      <Text style={[styles.tabText, isSignUp && styles.tabTextActive]}>Cadastrar</Text>
+                      <UserPlus size={18} color={isSignUp ? accentColor : 'rgba(255,255,255,0.8)'} strokeWidth={2} />
+                      <Text style={[styles.tabText, isSignUp && styles.tabTextActive, isSignUp && { color: accentColor }]}>
+                        Cadastrar
+                      </Text>
                     </TouchableOpacity>
                   </View>
 
@@ -599,7 +684,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                       <TextInput
                         style={[
                           styles.fieldInput,
-                          focusedField === 'email' && styles.fieldInputFocused,
+                          focusedField === 'email' && inputFocusedStyle,
                           hasEmailError && styles.fieldInputError,
                         ]}
                         placeholder="E-mail"
@@ -625,7 +710,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         <TextInput
                           style={[
                             styles.fieldInput,
-                            focusedField === 'name' && styles.fieldInputFocused,
+                            focusedField === 'name' && inputFocusedStyle,
                             hasNameError && styles.fieldInputError,
                           ]}
                           placeholder="Nome completo"
@@ -643,7 +728,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         <TextInput
                           style={[
                             styles.fieldInput,
-                            focusedField === 'email' && styles.fieldInputFocused,
+                            focusedField === 'email' && inputFocusedStyle,
                             hasEmailError && styles.fieldInputError,
                           ]}
                           placeholder="E-mail"
@@ -664,7 +749,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         <View
                           style={[
                             styles.passwordWrap,
-                            focusedField === 'password' && styles.fieldInputFocused,
+                            focusedField === 'password' && inputFocusedStyle,
                             hasPasswordError && styles.fieldInputError,
                           ]}
                         >
@@ -701,7 +786,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         <View
                           style={[
                             styles.passwordWrap,
-                            focusedField === 'passwordConfirm' && styles.fieldInputFocused,
+                            focusedField === 'passwordConfirm' && inputFocusedStyle,
                             (hasConfirmPasswordError ||
                               (showValidationErrors && passwordConfirm.length > 0 && password !== passwordConfirm)) &&
                               styles.fieldInputError,
@@ -746,7 +831,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         <View
                           style={[
                             styles.passwordWrap,
-                            focusedField === 'password' && styles.fieldInputFocused,
+                            focusedField === 'password' && inputFocusedStyle,
                             hasPasswordError && styles.fieldInputError,
                           ]}
                         >
@@ -786,7 +871,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         }}
                         disabled={isLoading}
                       >
-                        <Text style={styles.forgotPasswordText}>Esqueci a senha</Text>
+                        <Text style={[styles.forgotPasswordText, { color: accentColor }]}>Esqueci a senha</Text>
                       </TouchableOpacity>
                     </>
                   )}
@@ -822,7 +907,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         ]}
                       >
                         <LinearGradient
-                          colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+                          colors={gradientColors}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 0 }}
                           style={styles.primaryButtonGradient}
@@ -866,7 +951,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                         ]}
                       >
                         <LinearGradient
-                          colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+                          colors={gradientColors}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 0 }}
                           style={styles.primaryButtonGradient}
@@ -894,7 +979,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                       disabled={isResettingPassword}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Text style={styles.backToLoginText}>Voltar ao login</Text>
+                      <Text style={[styles.backToLoginText, { color: accentColor }]}>Voltar ao login</Text>
                     </TouchableOpacity>
                   )}
 
@@ -1038,6 +1123,19 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   brandBold: { fontWeight: '800' },
+  brandNameSingle: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    maxWidth: 340,
+    paddingHorizontal: 12,
+  },
+  logoImage: {
+    width: 72,
+    height: 72,
+  },
   taglineWrap: {
     alignItems: 'center',
   },

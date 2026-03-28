@@ -9,6 +9,16 @@ export type RootStackParamList = {
   Auth: undefined;
   ChurchInvite: { code: string };
   SuperAdmin: undefined;
+  SuperAdminChurchManage: {
+    churchId: string;
+    churchName: string;
+    ministryName: string;
+    status: string;
+    userCount: number;
+    slug: string;
+    primaryInviteCode: string;
+    activeInviteCount: number;
+  };
   ChurchBrandingSettings: undefined;
   UpdatePassword: undefined;
   VisitorOnboarding: { token: string };

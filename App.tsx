@@ -10,11 +10,20 @@ import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Users, Calendar, Bell, BarChart3, User, BookOpen, MessageCircle, Sparkles, ListChecks } from 'lucide-react-native';
 import CustomDrawerContent from './components/navigation/CustomDrawerContent';
-import { getCurrentUser, supabase, isSupabaseConfigured, setSessionFromOAuthUrl, ensureUserProfileForOAuth, GOOGLE_REDIRECT_SCHEME } from './services/supabase';
+import {
+  getCurrentUser,
+  supabase,
+  signOut,
+  isSupabaseConfigured,
+  setSessionFromOAuthUrl,
+  ensureUserProfileForOAuth,
+  GOOGLE_REDIRECT_SCHEME,
+} from './services/supabase';
 import UpdatePasswordScreen from './screens/UpdatePasswordScreen';
 import { ChurchBrandingProvider } from './contexts/ChurchBrandingContext';
 import ChurchInviteLandingScreen from './screens/onboarding/ChurchInviteLandingScreen';
 import SuperAdminScreen from './screens/super-admin/SuperAdminScreen';
+import SuperAdminChurchManageScreen from './screens/super-admin/SuperAdminChurchManageScreen';
 import ChurchBrandingSettingsScreen from './screens/admin/ChurchBrandingSettingsScreen';
 
 /** Link do Google OAuth (não confundir com recuperação de senha: type=recovery). */
@@ -510,7 +519,7 @@ export default function App() {
                     }}
                     onCancel={() => {
                       setPasswordRecoveryMode(false);
-                      supabase.auth.signOut();
+                      void signOut();
                     }}
                   />
                 )}
@@ -534,7 +543,14 @@ export default function App() {
                   <Stack.Screen name="AdminTabs" component={AdminTabNavigator} />
                 )}
                 {userRole === 'super_admin' && (
-                  <Stack.Screen name="SuperAdmin" component={SuperAdminScreen} options={{ title: 'Super Admin' }} />
+                  <>
+                    <Stack.Screen name="SuperAdmin" component={SuperAdminScreen} options={{ title: 'Super Admin' }} />
+                    <Stack.Screen
+                      name="SuperAdminChurchManage"
+                      component={SuperAdminChurchManageScreen}
+                      options={{ title: 'Gerir igreja', headerShown: false }}
+                    />
+                  </>
                 )}
                 <Stack.Screen name="VisitorOnboarding" component={VisitorOnboardingScreen} />
                 <Stack.Screen name="QRCodeScanner" component={QRCodeScanner} />

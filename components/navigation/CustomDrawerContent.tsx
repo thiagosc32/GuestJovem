@@ -18,8 +18,9 @@ import { COLORS } from '../../constants/colors';
 import { SPACING } from '../../constants/dimensions';
 import { isFeatureAvailableForLevel, getLockedFeatureAlert, type FeatureId } from '../../constants/featureGates';
 import { getJourneySummary } from '../../services/spiritualJourney';
-import { supabase } from '../../services/supabase';
+import { supabase, signOut } from '../../services/supabase';
 import type { UserDrawerParamList } from '../../types/navigation';
+import { useChurchBranding } from '../../contexts/ChurchBrandingContext';
 
 const DRAWER_WIDTH = 280;
 
@@ -48,6 +49,9 @@ const MENU_ITEMS: DrawerItemConfig[] = [
 export default function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { state, navigation } = props;
   const insets = useSafeAreaInsets();
+  const { branding, themeColors } = useChurchBranding();
+  const drawerTitleText =
+    branding?.ministry_name?.trim() || branding?.name?.trim() || 'Guest Jovem';
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
@@ -69,7 +73,7 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
   const handleLogout = () => {
     setLogoutModalVisible(false);
     navigation.closeDrawer();
-    supabase.auth.signOut();
+    void signOut();
   };
 
   const confirmLogout = () => {
@@ -84,7 +88,9 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
         style={styles.drawer}
       >
         <View style={styles.drawerHeader}>
-          <Text style={styles.drawerTitle}>Guest Jovem</Text>
+          <Text style={[styles.drawerTitle, { color: themeColors.primary }]} numberOfLines={3}>
+            {drawerTitleText}
+          </Text>
         </View>
         <View style={styles.menuSection}>
           {MENU_ITEMS.map((item) => {
@@ -209,7 +215,6 @@ const styles = StyleSheet.create({
   drawerTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: COLORS.primary,
   },
   menuSection: { marginBottom: SPACING.SM },
   label: { fontSize: 15, fontWeight: '500' },

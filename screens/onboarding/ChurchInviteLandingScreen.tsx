@@ -42,6 +42,7 @@ export default function ChurchInviteLandingScreen() {
   const [invalid, setInvalid] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ministryName, setMinistryName] = useState('');
+  const [ministrySlogan, setMinistrySlogan] = useState('');
   const [churchName, setChurchName] = useState('');
 
   const load = useCallback(async () => {
@@ -58,6 +59,7 @@ export default function ChurchInviteLandingScreen() {
         return;
       }
       setMinistryName(res.church.ministry_name);
+      setMinistrySlogan(res.church.ministry_slogan ?? '');
       setChurchName(res.church.name);
       await AsyncStorage.setItem(PENDING_CHURCH_INVITE_KEY, code);
     } catch {
@@ -178,7 +180,7 @@ export default function ChurchInviteLandingScreen() {
           <Church size={48} color={COLORS.primary} style={{ marginBottom: SPACING.SM }} />
           <Text style={styles.kicker}>Convite Guest Jovem</Text>
           <Text style={styles.heroTitle}>{ministryName}</Text>
-          <Text style={styles.sub}>{churchName}</Text>
+          <Text style={styles.sub}>{ministrySlogan.trim() || churchName}</Text>
         </View>
         <Text style={styles.body}>
           Você foi convidado a participar do app nesta igreja. Toque abaixo para entrar ou criar conta — usaremos este convite ao registrar.

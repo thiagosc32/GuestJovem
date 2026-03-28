@@ -22,7 +22,7 @@ import * as FileSystem from 'expo-file-system';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 
-import { supabase } from '../../services/supabase';
+import { supabase, signOut } from '../../services/supabase';
 import { getJourneySummary } from '../../services/spiritualJourney';
 import { getUnlockedAchievements } from '../../services/achievementsService';
 import Gradient from '../../components/ui/Gradient';
@@ -374,7 +374,7 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     try {
       await AsyncStorage.removeItem('userProfile');
-      await supabase.auth.signOut();
+      await signOut();
       // O listener onAuthStateChange no App.tsx irá atualizar o estado e exibir a tela de login
     } catch (error: any) {
       console.error('Erro ao sair:', error.message);

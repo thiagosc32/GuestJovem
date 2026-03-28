@@ -13,7 +13,7 @@ import {
   Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft } from 'lucide-react-native';
 import { COLORS } from '../../constants/colors';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
@@ -21,10 +21,8 @@ import { TYPOGRAPHY } from '../../constants/theme';
 import {
   superAdminListChurches,
   superAdminCreateChurch,
-  superAdminSetChurchStatus,
   superAdminSetTenantProvisioningMode,
   getTenantProvisioningMode,
-  superAdminAddChurchInvite,
   getPublicWebBaseUrl,
 } from '../../services/supabase';
 
@@ -67,6 +65,7 @@ export default function SuperAdminScreen() {
   const [newName, setNewName] = useState('');
   const [newMinistry, setNewMinistry] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -87,9 +86,11 @@ export default function SuperAdminScreen() {
     }
   }, []);
 
-  React.useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -113,21 +114,40 @@ export default function SuperAdminScreen() {
     }
     setSaving(true);
     try {
-      const res = await superAdminCreateChurch(newName.trim(), newMinistry.trim(), inviteCode.trim() || null);
+      const adminEmailTrimmed = adminEmail.trim();
+      const res = await superAdminCreateChurch(
+        newName.trim(),
+        newMinistry.trim(),
+        inviteCode.trim() || null,
+        adminEmailTrimmed || null
+      );
       if (!(res as any)?.success) {
         throw new Error((res as any)?.error ?? 'Falha');
       }
       const code = (res as any)?.invite_code ?? '';
       const url = code ? churchInvitePublicUrl(code) : '';
+      const linked = !!(res as any)?.admin_linked;
+      const pending = !!(res as any)?.admin_pending;
+      const adminNote = typeof (res as any)?.admin_note === 'string' ? (res as any).admin_note : '';
       setNewName('');
       setNewMinistry('');
       setInviteCode('');
+      setAdminEmail('');
       await load();
+      const adminLine = adminEmailTrimmed
+        ? adminNote
+          ? `\n\nAdmin: ${adminNote}`
+          : linked
+            ? '\n\nA conta do administrador já existia: foi definida como admin desta igreja.'
+            : pending
+              ? '\n\nQuando criar conta com o e-mail do administrador, entrará como admin desta igreja.'
+              : ''
+        : '';
       Alert.alert(
         'Igreja criada',
-        code
+        (code
           ? `Convite gerado automaticamente.\nO mesmo link fica visível no card da igreja.\n\n${url}`
-          : 'Igreja criada. Atualize a lista se o convite não aparecer.',
+          : 'Igreja criada. Atualize a lista se o convite não aparecer.') + adminLine,
         url
           ? [
               { text: 'Copiar link', onPress: () => void copyOrShareUrl(url) },
@@ -140,53 +160,6 @@ export default function SuperAdminScreen() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const toggleSuspend = (row: ChurchRow) => {
-    const next = row.status === 'suspended' ? 'active' : 'suspended';
-    Alert.alert('Confirmar', `${next === 'suspended' ? 'Suspender' : 'Reativar'} ${row.name}?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'OK',
-        onPress: async () => {
-          try {
-            await superAdminSetChurchStatus(row.id, next);
-            await load();
-          } catch (e: any) {
-            Alert.alert('Erro', e?.message ?? '');
-          }
-        },
-      },
-    ]);
-  };
-
-  const addChurchInvite = (row: ChurchRow) => {
-    Alert.alert(
-      'Novo convite',
-      `Gera um novo código para "${row.ministry_name}". O link anterior continua válido se o convite antigo existir.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Gerar',
-          onPress: async () => {
-            try {
-              const res = await superAdminAddChurchInvite(row.id, null);
-              if (!(res as any)?.success) throw new Error((res as any)?.error ?? 'Falha');
-              const code = (res as any)?.invite_code ?? '';
-              const url = code ? churchInvitePublicUrl(code) : '';
-              Alert.alert(
-                'Convite criado',
-                code ? `Código: ${code}\n\n${url}` : 'OK',
-                url ? [{ text: 'Copiar link', onPress: () => void copyOrShareUrl(url) }, { text: 'Fechar' }] : undefined
-              );
-              await load();
-            } catch (e: any) {
-              Alert.alert('Erro', e?.message ?? '');
-            }
-          },
-        },
-      ]
-    );
   };
 
   if (loading) {
@@ -227,7 +200,7 @@ export default function SuperAdminScreen() {
 
         <Text style={styles.section}>Nova igreja</Text>
         <Text style={styles.hint}>
-          Ao criar, o sistema gera automaticamente um código de convite e o link público aparece no card desta igreja (e no alerta abaixo). O campo de código é só se quiseres definir um código próprio.
+          Ao criar, o sistema gera automaticamente um código de convite e o link público aparece no card desta igreja (e no alerta abaixo). O campo de código é só se quiseres definir um código próprio. Opcionalmente indica o e-mail da conta que será administrador da igreja (se já existir, fica admin; se ainda não, ao registar com esse e-mail entra como admin).
         </Text>
         <TextInput
           style={styles.input}
@@ -251,66 +224,53 @@ export default function SuperAdminScreen() {
           onChangeText={setInviteCode}
           autoCapitalize="none"
         />
+        <TextInput
+          style={styles.input}
+          placeholder="E-mail do administrador da igreja — opcional"
+          placeholderTextColor={COLORS.textLight}
+          value={adminEmail}
+          onChangeText={setAdminEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          autoCorrect={false}
+        />
         <TouchableOpacity style={styles.primaryBtn} onPress={createChurch} disabled={saving}>
           {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryTxt}>Criar igreja</Text>}
         </TouchableOpacity>
 
         <Text style={[styles.section, { marginTop: SPACING.LG }]}>Igrejas</Text>
         <Text style={styles.hint}>
-          O link de convite usa /convite/&lt;código&gt;. Configure EXPO_PUBLIC_WEB_URL (ex.: https://guestjovem.com) em produção. O convite é criado automaticamente ao criar a igreja; o card mostra o link após aplicar a migração super_admin_church_invites no Supabase.
+          Toque num card para abrir convites, administrador (ver / editar / excluir) e suspender igreja. O link público usa /convite/&lt;código&gt; — configure EXPO_PUBLIC_WEB_URL em produção.
         </Text>
         {churches.map((c) => {
-          const code = c.primary_invite_code?.trim() || '';
-          const inviteUrl = code ? churchInvitePublicUrl(code) : '';
           const nActive = typeof c.active_invite_count === 'number' ? c.active_invite_count : null;
           return (
-            <View key={c.id} style={styles.card}>
+            <TouchableOpacity
+              key={c.id}
+              style={styles.card}
+              activeOpacity={0.75}
+              onPress={() =>
+                navigation.navigate('SuperAdminChurchManage', {
+                  churchId: c.id,
+                  churchName: c.name,
+                  ministryName: c.ministry_name,
+                  status: c.status,
+                  userCount: c.user_count,
+                  slug: c.slug ?? '',
+                  primaryInviteCode: c.primary_invite_code ?? '',
+                  activeInviteCount: nActive ?? 0,
+                })
+              }
+            >
               <Text style={styles.cardTitle}>{c.ministry_name}</Text>
               <Text style={styles.cardSub}>{c.name}</Text>
               <Text style={styles.cardMeta}>
                 {c.status} · {c.user_count} usuários
-                {nActive !== null ? ` · ${nActive} convite(s) ativo(s)` : ''}
+                {nActive !== null ? ` · ${nActive} convite(s)` : ''}
               </Text>
               {c.slug ? <Text style={styles.cardMeta}>slug: {c.slug}</Text> : null}
-
-              <Text style={styles.manageLabel}>Convite (entrada na igreja)</Text>
-              {inviteUrl ? (
-                <>
-                  <Text style={styles.inviteUrl} selectable>
-                    {inviteUrl}
-                  </Text>
-                  <Text style={styles.cardMeta}>Código: {code}</Text>
-                </>
-              ) : (
-                <Text style={styles.noInvite}>
-                  Nenhum convite ativo. A igreja legado costumava existir antes dos convites — use “Novo convite” para gerar o link.
-                </Text>
-              )}
-
-              <View style={styles.manageRow}>
-                <TouchableOpacity
-                  style={[styles.manageBtn, !inviteUrl && styles.manageBtnDisabled]}
-                  onPress={() => inviteUrl && void copyOrShareUrl(inviteUrl)}
-                  disabled={!inviteUrl}
-                >
-                  <Text style={styles.manageBtnTxt}>Copiar link</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.manageBtnSecondary} onPress={() => addChurchInvite(c)}>
-                  <Text style={styles.manageBtnSecondaryTxt}>Novo convite</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.manageRow}>
-                <TouchableOpacity
-                  style={styles.manageBtnDanger}
-                  onPress={() => toggleSuspend(c)}
-                >
-                  <Text style={styles.manageBtnDangerTxt}>
-                    {c.status === 'suspended' ? 'Reativar igreja' : 'Suspender igreja'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+              <Text style={styles.cardTapHint}>Toque para gerir →</Text>
+            </TouchableOpacity>
           );
         })}
       </ScrollView>
@@ -365,43 +325,10 @@ const styles = StyleSheet.create({
   cardTitle: { ...TYPOGRAPHY.h4, color: COLORS.text },
   cardSub: { ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary },
   cardMeta: { ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary, marginTop: 4 },
-  manageLabel: {
+  cardTapHint: {
     ...TYPOGRAPHY.bodySmall,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginTop: SPACING.MD,
-    marginBottom: 6,
-  },
-  inviteUrl: {
-    fontSize: 13,
     color: COLORS.primary,
-    lineHeight: 18,
+    fontWeight: '600',
+    marginTop: SPACING.SM,
   },
-  noInvite: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 18, marginTop: 4 },
-  manageRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: SPACING.SM },
-  manageBtn: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: BORDER_RADIUS.MD,
-  },
-  manageBtnDisabled: { opacity: 0.45 },
-  manageBtnTxt: { color: '#fff', fontWeight: '600', fontSize: 13 },
-  manageBtnSecondary: {
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: BORDER_RADIUS.MD,
-  },
-  manageBtnSecondaryTxt: { color: COLORS.primary, fontWeight: '600', fontSize: 13 },
-  manageBtnDanger: {
-    marginTop: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: BORDER_RADIUS.MD,
-    borderWidth: 1,
-    borderColor: COLORS.error,
-  },
-  manageBtnDangerTxt: { color: COLORS.error, fontWeight: '600', fontSize: 13 },
 });
