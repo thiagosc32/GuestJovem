@@ -12,6 +12,10 @@ import { Home, Users, Calendar, Bell, BarChart3, User, BookOpen, MessageCircle, 
 import CustomDrawerContent from './components/navigation/CustomDrawerContent';
 import { getCurrentUser, supabase, isSupabaseConfigured, setSessionFromOAuthUrl, ensureUserProfileForOAuth, GOOGLE_REDIRECT_SCHEME } from './services/supabase';
 import UpdatePasswordScreen from './screens/UpdatePasswordScreen';
+import { ChurchBrandingProvider } from './contexts/ChurchBrandingContext';
+import ChurchInviteLandingScreen from './screens/onboarding/ChurchInviteLandingScreen';
+import SuperAdminScreen from './screens/super-admin/SuperAdminScreen';
+import ChurchBrandingSettingsScreen from './screens/admin/ChurchBrandingSettingsScreen';
 
 /** Link do Google OAuth (não confundir com recuperação de senha: type=recovery). */
 const isGoogleOAuthCallbackUrl = (url: string) =>
@@ -335,7 +339,7 @@ function isRecoveryHashOnWeb(): boolean {
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'user' | 'super_admin' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [supabaseRetry, setSupabaseRetry] = useState(0);
@@ -402,7 +406,7 @@ export default function App() {
         await ensureUserProfileForOAuth();
         const user = await getCurrentUser();
         if (user) {
-          setUserRole((user as { role?: 'admin' | 'user' }).role ?? 'user');
+          setUserRole((user as { role?: 'admin' | 'user' | 'super_admin' }).role ?? 'user');
           setIsAuthenticated(true);
         }
       } catch (e) {
@@ -434,7 +438,7 @@ export default function App() {
 
       const user = await getCurrentUser();
       if (user) {
-        setUserRole((user as { role?: 'admin' | 'user' }).role ?? null);
+        setUserRole((user as { role?: 'admin' | 'user' | 'super_admin' }).role ?? null);
         setIsAuthenticated(true);
       } else {
         setUserRole(null);
@@ -476,6 +480,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <PaperProvider>
+        <ChurchBrandingProvider>
         <WebLayoutWrapper>
         <NavigationContainer
           linking={{
@@ -483,6 +488,7 @@ export default function App() {
             config: {
               screens: {
                 VisitorOnboarding: 'visit/:token',
+                ChurchInvite: 'convite/:code',
               },
             },
           }}
@@ -516,14 +522,19 @@ export default function App() {
                     <AuthScreen {...props} onAuthenticate={(role) => { setUserRole(role); setIsAuthenticated(true); }} />
                   )}
                 </Stack.Screen>
+                <Stack.Screen name="ChurchInvite" component={ChurchInviteLandingScreen} />
                 <Stack.Screen name="VisitorOnboarding" component={VisitorOnboardingScreen} />
               </>
             ) : (
               <>
                 {/* Navegação principal: Drawer (menu hambúrguer) + Bottom Tab (Início, Devocional, Eventos, Perfil) */}
                 <Stack.Screen name="UserTabs" component={UserDrawerNavigator} />
+                <Stack.Screen name="ChurchInvite" component={ChurchInviteLandingScreen} />
                 {userRole === 'admin' && (
                   <Stack.Screen name="AdminTabs" component={AdminTabNavigator} />
+                )}
+                {userRole === 'super_admin' && (
+                  <Stack.Screen name="SuperAdmin" component={SuperAdminScreen} options={{ title: 'Super Admin' }} />
                 )}
                 <Stack.Screen name="VisitorOnboarding" component={VisitorOnboardingScreen} />
                 <Stack.Screen name="QRCodeScanner" component={QRCodeScanner} />
@@ -532,6 +543,7 @@ export default function App() {
                 <Stack.Screen name="CreateEventScreen" component={CreateEventScreen} options={{ headerShown: false }} />
                 <Stack.Screen name="UserManagement" component={UserManagementScreen} options={{ title: 'Gestão de Usuários' }} />
                 <Stack.Screen name="AppSettings" component={AppSettingsScreen} options={{ title: 'Configurações do App' }} />
+                <Stack.Screen name="ChurchBrandingSettings" component={ChurchBrandingSettingsScreen} options={{ headerShown: false }} />
                 <Stack.Screen name="Versiculos" component={VersiculosScreen} options={{ headerShown: false }} />
                 {/* EventPresenceScreen fica dentro da aba Presença (PresençaStack) para o menu inferior aparecer */}
                 <Stack.Screen name="NotificationScreen" component={NotificationScreen} />
@@ -557,6 +569,7 @@ export default function App() {
         </NavigationContainer>
         {isAuthenticated && <OnboardingLevelModal />}
         </WebLayoutWrapper>
+        </ChurchBrandingProvider>
       </PaperProvider>
     </SafeAreaProvider>
   );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image as ImageIcon, ArrowLeft, BookOpen, Calendar, Layout } from 'lucide-react-native';
+import { Image as ImageIcon, ArrowLeft, BookOpen, Calendar, Layout, Palette, ChevronRight } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../services/supabase';
@@ -9,9 +9,11 @@ import { COLORS } from '../../constants/colors';
 import { SPACING } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../types/navigation';
 
 export default function AppSettingsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [currentImages, setCurrentImages] = useState<Record<string, string>>({});
 
@@ -106,6 +108,25 @@ export default function AppSettingsScreen() {
         </View>
         <ConfigItem title="Card de Devocionais" sub="Fundo do card na Home" icon={BookOpen} dbKey="card_devotional_bg" />
         <ConfigItem title="Card de Próximo Evento" sub="Fundo do card na Home" icon={Calendar} dbKey="card_next_event_bg" />
+
+        <View style={styles.sectionTitleWrap}>
+          <Palette size={20} color={COLORS.primary} />
+          <Text style={styles.sectionTitle}>Igreja</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.linkCard}
+          onPress={() => navigation.navigate('ChurchBrandingSettings')}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.iconBox, { marginRight: 12 }]}>
+            <Palette size={24} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Identidade da igreja</Text>
+            <Text style={styles.cardSub}>Nome do ministério, logo e cores do app</Text>
+          </View>
+          <ChevronRight size={22} color={COLORS.textSecondary} />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -116,6 +137,15 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.LG, backgroundColor: '#fff' },
   headerTitle: { ...TYPOGRAPHY.h3, color: COLORS.text },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, flexDirection: 'row', alignItems: 'center', ...SHADOWS.small },
+  linkCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...SHADOWS.small,
+  },
   cardInfo: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   iconBox: { width: 45, height: 45, borderRadius: 12, backgroundColor: `${COLORS.primary}10`, justifyContent: 'center', alignItems: 'center' },
   cardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },

@@ -11,11 +11,11 @@
     }
   },
   "scripts": {
-    "start": "expo start",
-    "start:tunnel": "expo start --tunnel",
+    "start": "cross-env EXPO_USE_METRO_POLLING=1 expo start",
+    "start:tunnel": "cross-env EXPO_USE_METRO_POLLING=1 expo start --tunnel",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web",
+    "web": "cross-env EXPO_USE_METRO_POLLING=1 expo start --web",
     "build:web": "expo export --platform web",
     "build:expo": "expo export --platform all --output-dir expo-build",
     "build:web:dev": "expo export --platform web --dev",
@@ -75,6 +75,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.10",
+    "cross-env": "^10.1.0",
     "patch-package": "^8.0.0",
     "sharp": "^0.34.5",
     "typescript": "~5.9.2"

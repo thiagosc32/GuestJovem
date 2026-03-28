@@ -138,7 +138,8 @@ export const isSupabaseConfigured = (): boolean => {
 /**
  * URL de retorno após cliques em links dos e-mails do Auth (reset de senha, magic link, etc.).
  * Deve estar em Supabase → Authentication → URL Configuration → Redirect URLs.
- * Prioridade: EXPO_PUBLIC_WEB_URL (produção) → na web `window.location.origin` → deep link Expo (`guestjovem://` / exp://...).
+ * Web em localhost: sempre `window.location.origin` (OAuth / reset funcionam no dev).
+ * Web em produção ou nativo: `EXPO_PUBLIC_WEB_URL` / extra (padrão https://guestjovem.com no app.config).
  */
 export function getAuthEmailRedirectUrl(): string {
   const extra = getExtra();
@@ -148,6 +149,10 @@ export function getAuthEmailRedirectUrl(): string {
   const withSlash = (u: string) => (u.endsWith('/') ? u : `${u}/`);
 
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    const isLocalDev =
+      host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.local');
+    if (isLocalDev) return withSlash(window.location.origin);
     if (fromEnv) return withSlash(fromEnv);
     return withSlash(window.location.origin);
   }
@@ -177,9 +182,10 @@ export const signIn = async (email: string, password: string) => {
  * O trigger `handle_new_auth_user` cria a linha em `public.users` a partir de `user_metadata.name`.
  * Se "Confirm email" estiver desligado no projeto, `data.session` vem preenchido e o usuário já entra logado.
  */
-export const signUp = async (email: string, password: string, name: string) => {
+export const signUp = async (email: string, password: string, name: string, inviteCode?: string | null) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const trimmedName = name.trim();
+  const code = inviteCode?.trim() || null;
   /**
    * Sempre limpar sessão local antes de cadastrar.
    * Se o usuário foi apagado no Dashboard do Supabase, o refresh token pode continuar no AsyncStorage;
@@ -190,27 +196,15 @@ export const signUp = async (email: string, password: string, name: string) => {
     email: email.trim(),
     password,
     options: {
-      data: { name: trimmedName, full_name: trimmedName },
+      data: {
+        name: trimmedName,
+        full_name: trimmedName,
+        ...(code ? { invite_code: code } : {}),
+      },
       emailRedirectTo: getAuthEmailRedirectUrl(),
     },
   });
   if (error) throw error;
-
-  // Só cria linha em `users` no cliente se já houver sessão **e** e-mail confirmado (projeto sem "Confirm email").
-  if (data.session && data.user?.email_confirmed_at) {
-    const { data: existing } = await supabaseClient.from('users').select('id').eq('id', data.user.id).maybeSingle();
-    if (!existing) {
-      const { error: profileError } = await supabaseClient.from('users').insert({
-        id: data.user.id,
-        email: data.user.email ?? email.trim(),
-        name: trimmedName,
-        role: 'user',
-        created_at: new Date().toISOString(),
-      });
-      if (profileError && profileError.code !== '23505') throw profileError;
-    }
-  }
-
   return data;
 };
 
@@ -270,17 +264,17 @@ export const ensureUserProfileForOAuth = async (): Promise<void> => {
   const { data: { session } } = await supabaseClient.auth.getSession();
   const user = session?.user;
   if (!user) return;
-  const { data: existing } = await supabaseClient.from('users').select('id').eq('id', user.id).single();
-  if (existing) return;
-  const email = user.email ?? '';
-  const name = (user.user_metadata?.full_name ?? user.user_metadata?.name ?? email.split('@')[0] ?? 'Usuário') as string;
-  await supabaseClient.from('users').insert({
-    id: user.id,
-    email,
-    name,
-    role: 'user',
-    created_at: new Date().toISOString(),
-  });
+  const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+  const { PENDING_CHURCH_INVITE_KEY } = await import('../constants/tenantInvite');
+  const pending = (await AsyncStorage.getItem(PENDING_CHURCH_INVITE_KEY))?.trim();
+  if (pending) {
+    try {
+      await supabaseClient.rpc('claim_church_invite_for_current_user', { p_code: pending });
+    } catch {
+      /* best-effort: rede / cliente */
+    }
+    await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY);
+  }
 };
 
 export { GOOGLE_REDIRECT_SCHEME };
@@ -314,6 +308,145 @@ export const getCurrentUser = async () => {
   }
 };
 
+export type ChurchBrandingRow = {
+  id: string;
+  name: string;
+  ministry_name: string;
+  logo_url: string | null;
+  primary_color: string | null;
+  secondary_color: string | null;
+};
+
+export const getChurchBrandingById = async (churchId: string): Promise<ChurchBrandingRow | null> => {
+  if (!supabaseClient) return null;
+  const { data, error } = await supabaseClient
+    .from('churches')
+    .select('id, name, ministry_name, logo_url, primary_color, secondary_color')
+    .eq('id', churchId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as ChurchBrandingRow;
+};
+
+export const previewChurchInvite = async (
+  code: string
+): Promise<{ valid: boolean; church?: ChurchBrandingRow; error?: string }> => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('church_invite_preview', { p_code: code.trim() });
+  if (error) throw error;
+  const row = data as {
+    valid?: boolean;
+    church?: {
+      name: string;
+      ministry_name: string;
+      logo_url: string | null;
+      primary_color: string | null;
+      secondary_color: string | null;
+    };
+    error?: string;
+  };
+  if (!row?.valid || !row.church) return { valid: false, error: row?.error ?? 'invalid' };
+  const ch = row.church;
+  return {
+    valid: true,
+    church: {
+      id: '',
+      name: ch.name,
+      ministry_name: ch.ministry_name,
+      logo_url: ch.logo_url,
+      primary_color: ch.primary_color,
+      secondary_color: ch.secondary_color,
+    },
+  };
+};
+
+export const getTenantProvisioningMode = async (): Promise<'manual' | 'stripe' | 'both'> => {
+  if (!supabaseClient) return 'both';
+  const { data, error } = await supabaseClient.rpc('get_tenant_provisioning_mode');
+  if (error) return 'both';
+  const m = (data as { mode?: string })?.mode;
+  if (m === 'manual' || m === 'stripe' || m === 'both') return m;
+  return 'both';
+};
+
+/** Após login (e-mail/senha): aplica convite pendente em AsyncStorage e limpa. */
+export const claimAndClearPendingChurchInvite = async (): Promise<void> => {
+  if (!supabaseClient) return;
+  const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+  const { PENDING_CHURCH_INVITE_KEY } = await import('../constants/tenantInvite');
+  const pending = (await AsyncStorage.getItem(PENDING_CHURCH_INVITE_KEY))?.trim();
+  if (!pending) return;
+  try {
+    await supabaseClient.rpc('claim_church_invite_for_current_user', { p_code: pending });
+  } catch {
+    /* best-effort */
+  }
+  await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY);
+};
+
+export const superAdminListChurches = async (): Promise<unknown> => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_list_churches');
+  if (error) throw error;
+  return data;
+};
+
+export const superAdminCreateChurch = async (name: string, ministryName: string, inviteCode?: string | null) => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_create_church', {
+    p_name: name,
+    p_ministry_name: ministryName,
+    p_invite_code: inviteCode ?? undefined,
+  });
+  if (error) throw error;
+  return data;
+};
+
+export const superAdminSetChurchStatus = async (churchId: string, status: 'pending_active' | 'active' | 'suspended') => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_set_church_status', {
+    p_church_id: churchId,
+    p_status: status,
+  });
+  if (error) throw error;
+  return data;
+};
+
+/** Novo código em church_invites (igreja legado ou convite extra). */
+export const superAdminAddChurchInvite = async (churchId: string, inviteCode?: string | null) => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_add_church_invite', {
+    p_church_id: churchId,
+    p_code: inviteCode?.trim() || undefined,
+  });
+  if (error) throw error;
+  return data;
+};
+
+export const superAdminSetTenantProvisioningMode = async (mode: 'manual' | 'stripe' | 'both') => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('super_admin_set_tenant_provisioning_mode', { p_mode: mode });
+  if (error) throw error;
+  return data;
+};
+
+export const churchAdminUpdateBranding = async (params: {
+  ministryName?: string;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
+}) => {
+  if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabaseClient.rpc('church_admin_update_branding', {
+    p_ministry_name: params.ministryName ?? undefined,
+    p_logo_url: params.logoUrl ?? undefined,
+    p_primary_color: params.primaryColor ?? undefined,
+    p_secondary_color: params.secondaryColor ?? undefined,
+  });
+  if (error) throw error;
+  return data;
+};
+
 // User Queries
 export const getUserProfile = async (userId: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
@@ -340,7 +473,7 @@ export const updateUserProfile = async (userId: string, updates: Partial<Databas
   return data;
 };
 
-export const updateUserRole = async (userId: string, role: 'user' | 'admin') => {
+export const updateUserRole = async (userId: string, role: 'user' | 'admin' | 'super_admin') => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const { data, error } = await supabaseClient
     .from('users')

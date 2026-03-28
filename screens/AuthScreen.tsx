@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, Flame } from 'lucide-react-native';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as WebBrowser from 'expo-web-browser';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   signIn,
   signUp,
@@ -26,15 +27,32 @@ import {
   resetPassword,
   setSessionFromOAuthUrl,
   ensureUserProfileForOAuth,
+  claimAndClearPendingChurchInvite,
 } from '../services/supabase';
+import { PENDING_CHURCH_INVITE_KEY } from '../constants/tenantInvite';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS } from '../constants/colors';
 
 const GLASS_BORDER_COLOR = 'rgba(255, 255, 255, 0.2)';
 
+/** Acesso rápido (dev): criar em Authentication + `public.users` com `role = 'super_admin'` e `church_id` NULL */
+const QUICK_SUPER_ADMIN_EMAIL = 'superadmin@conviva.com';
+const QUICK_SUPER_ADMIN_PASSWORD = 'superadmin123';
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+export function mapAppRole(profile: { role?: string } | null): 'admin' | 'user' | 'super_admin' {
+  const r = profile?.role;
+  if (r === 'super_admin') return 'super_admin';
+  if (r === 'admin') return 'admin';
+  return 'user';
+}
+
 interface AuthScreenProps {
-  onAuthenticate: (role: 'admin' | 'user') => void;
+  onAuthenticate: (role: 'admin' | 'user' | 'super_admin') => void;
 }
 
 export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
@@ -158,15 +176,14 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     ]).start();
   }, []);
 
-  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   const MIN_PASSWORD_LENGTH = 6;
 
-  const handleAuth = async () => {
-    const emailTrim = email.trim();
-    const emailEmpty = !emailTrim;
-    const passwordEmpty = !password.trim();
+  /** Login com e-mail/senha explícitos (usado pelo botão Entrar e pelo acesso rápido Super admin). */
+  const signInWithCredentials = async (emailRaw: string, passwordRaw: string) => {
+    const emailTrim = emailRaw.trim();
+    const passwordVal = passwordRaw.trim();
 
-    if (emailEmpty || passwordEmpty) {
+    if (!emailTrim || !passwordVal) {
       setShowValidationErrors(true);
       setError('Preencha e-mail e senha.');
       setSuccessMessage('');
@@ -185,15 +202,21 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     setIsLoading(true);
 
     try {
-      await signIn(emailTrim, password);
+      await signIn(emailTrim, passwordVal);
+      await claimAndClearPendingChurchInvite();
       const profile = await getCurrentUser();
-      const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
-      onAuthenticate(role);
+      onAuthenticate(mapAppRole(profile));
     } catch (err: any) {
       console.error('Auth error:', err);
       setSuccessMessage('');
       if (err.message?.includes('Invalid login credentials')) {
-        setError('E-mail ou senha incorretos.');
+        if (emailTrim.toLowerCase() === QUICK_SUPER_ADMIN_EMAIL.toLowerCase()) {
+          setError(
+            'Super admin: execute uma vez o ficheiro supabase/seed_super_admin_quick_access.sql no SQL Editor do Supabase (cria o utilizador e a senha superadmin123).'
+          );
+        } else {
+          setError('E-mail ou senha incorretos.');
+        }
       } else if (err.message?.toLowerCase().includes('email not confirmed')) {
         setError('Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.');
       } else {
@@ -202,6 +225,10 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAuth = async () => {
+    await signInWithCredentials(email, password);
   };
 
   const handleForgotPassword = async () => {
@@ -275,7 +302,8 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
     setSuccessMessage('');
     setIsLoading(true);
     try {
-      const data = await signUp(email.trim(), password, name.trim());
+      const pending = (await AsyncStorage.getItem(PENDING_CHURCH_INVITE_KEY))?.trim() ?? null;
+      const data = await signUp(email.trim(), password, name.trim(), pending);
       const user = data.user;
       const confirmed = Boolean(user?.email_confirmed_at);
 
@@ -291,9 +319,9 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
 
       // Projeto com "Confirm email" desligado: sessão + e-mail já considerado confirmado — entra direto.
       if (data.session && user && confirmed) {
+        await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
         const profile = await getCurrentUser();
-        const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
-        onAuthenticate(role);
+        onAuthenticate(mapAppRole(profile));
         return;
       }
 
@@ -368,7 +396,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
             await ensureUserProfileForOAuth();
             const user = await getCurrentUser();
             if (user) {
-              onAuthenticate((user as { role?: 'admin' | 'user' }).role ?? 'user');
+              onAuthenticate(mapAppRole(user as { role?: string }));
             }
           } catch (e: any) {
             setError(e?.message ?? 'Erro ao concluir login.');
@@ -396,7 +424,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
         await ensureUserProfileForOAuth();
         const user = await getCurrentUser();
         if (user) {
-          onAuthenticate((user as { role?: 'admin' | 'user' }).role ?? 'user');
+          onAuthenticate(mapAppRole(user as { role?: string }));
         }
         return;
       }
@@ -934,6 +962,20 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                   >
                     <Text style={styles.quickAccessBtnText}>Usuário</Text>
                   </TouchableOpacity>
+                  <View style={styles.quickAccessDot} />
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEmail(QUICK_SUPER_ADMIN_EMAIL);
+                      setPassword(QUICK_SUPER_ADMIN_PASSWORD);
+                      setIsSignUp(false);
+                      setShowValidationErrors(false);
+                      void signInWithCredentials(QUICK_SUPER_ADMIN_EMAIL, QUICK_SUPER_ADMIN_PASSWORD);
+                    }}
+                    disabled={isLoading}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.quickAccessBtnText}>Super admin</Text>
+                  </TouchableOpacity>
                 </View>
               </Animated.View>
               )}
@@ -1222,8 +1264,11 @@ const styles = StyleSheet.create({
   },
   quickAccessRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 15,
+    rowGap: 10,
   },
   quickAccessBtn: {},
   quickAccessBtnText: {

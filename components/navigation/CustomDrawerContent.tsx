@@ -11,7 +11,8 @@ import {
   DrawerContentComponentProps,
   DrawerItem,
 } from '@react-navigation/drawer';
-import { Sparkles, ListChecks, MessageCircle, Heart, LogOut, Shield, PenLine, BookOpen, Award, BookMarked, Lock } from 'lucide-react-native';
+import { Sparkles, ListChecks, MessageCircle, Heart, LogOut, Shield, PenLine, BookOpen, Award, BookMarked, Lock, Building2 } from 'lucide-react-native';
+import { CommonActions } from '@react-navigation/native';
 import { Alert } from 'react-native';
 import { COLORS } from '../../constants/colors';
 import { SPACING } from '../../constants/dimensions';
@@ -49,6 +50,7 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
   const insets = useSafeAreaInsets();
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [journeyLevel, setJourneyLevel] = useState(1);
 
   useEffect(() => {
@@ -56,7 +58,9 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.id) return;
       const { data: row } = await supabase.from('users').select('role').eq('id', user.id).single();
-      setIsAdmin((row as any)?.role === 'admin');
+      const role = (row as { role?: string } | null)?.role;
+      setIsAdmin(role === 'admin');
+      setIsSuperAdmin(role === 'super_admin');
       const summary = await getJourneySummary(user.id);
       setJourneyLevel(summary?.level ?? 1);
     })();
@@ -128,6 +132,24 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
               inactiveTintColor={COLORS.text}
               labelStyle={styles.label}
               icon={({ color, size }) => <Shield color={color} size={size} />}
+            />
+          </>
+        )}
+
+        {isSuperAdmin && (
+          <>
+            <View style={styles.separator} />
+            <DrawerItem
+              label="Super Admin (plataforma)"
+              onPress={() => {
+                navigation.closeDrawer();
+                navigation.dispatch(CommonActions.navigate({ name: 'SuperAdmin' as never }));
+              }}
+              activeBackgroundColor={COLORS.surfaceVariant}
+              activeTintColor={COLORS.primary}
+              inactiveTintColor={COLORS.text}
+              labelStyle={styles.label}
+              icon={({ color, size }) => <Building2 color={color} size={size} />}
             />
           </>
         )}

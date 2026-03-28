@@ -3,6 +3,7 @@
     { "source": "/Auth", "destination": "/", "permanent": false }
   ],
   "rewrites": [
-    { "source": "/visit/(.*)", "destination": "/index.html" }
+    { "source": "/visit/(.*)", "destination": "/index.html" },
+    { "source": "/convite/(.*)", "destination": "/index.html" }
   ]
 }

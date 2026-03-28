@@ -7,6 +7,9 @@
 
 export type RootStackParamList = {
   Auth: undefined;
+  ChurchInvite: { code: string };
+  SuperAdmin: undefined;
+  ChurchBrandingSettings: undefined;
   UpdatePassword: undefined;
   VisitorOnboarding: { token: string };
   AdminTabs: undefined;

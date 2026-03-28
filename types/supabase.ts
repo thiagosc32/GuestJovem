@@ -14,7 +14,8 @@ export interface Database {
           id: string
           email: string
           name: string
-          role: 'user' | 'admin'
+          role: 'user' | 'admin' | 'super_admin'
+          church_id: string | null
           ministry_function: string | null
           phone: string | null
           avatar_url: string | null
@@ -25,7 +26,8 @@ export interface Database {
           id?: string
           email: string
           name: string
-          role?: 'user' | 'admin'
+          role?: 'user' | 'admin' | 'super_admin'
+          church_id?: string | null
           ministry_function?: string | null
           phone?: string | null
           avatar_url?: string | null
@@ -36,11 +38,88 @@ export interface Database {
           id?: string
           email?: string
           name?: string
-          role?: 'user' | 'admin'
+          role?: 'user' | 'admin' | 'super_admin'
+          church_id?: string | null
           ministry_function?: string | null
           phone?: string | null
           avatar_url?: string | null
           last_active?: string
+          created_at?: string
+        }
+      }
+      churches: {
+        Row: {
+          id: string
+          name: string
+          ministry_name: string
+          logo_url: string | null
+          primary_color: string | null
+          secondary_color: string | null
+          slug: string | null
+          status: 'pending_active' | 'active' | 'suspended'
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          ministry_name?: string
+          logo_url?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
+          slug?: string | null
+          status?: 'pending_active' | 'active' | 'suspended'
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          ministry_name?: string
+          logo_url?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
+          slug?: string | null
+          status?: 'pending_active' | 'active' | 'suspended'
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          created_at?: string
+        }
+      }
+      church_invites: {
+        Row: {
+          id: string
+          church_id: string
+          code: string
+          expires_at: string | null
+          max_uses: number | null
+          uses_count: number
+          revoked_at: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          church_id: string
+          code: string
+          expires_at?: string | null
+          max_uses?: number | null
+          uses_count?: number
+          revoked_at?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          church_id?: string
+          code?: string
+          expires_at?: string | null
+          max_uses?: number | null
+          uses_count?: number
+          revoked_at?: string | null
+          created_by?: string | null
           created_at?: string
         }
       }
@@ -266,6 +345,7 @@ export interface Database {
       events: {
         Row: {
           id: string
+          church_id: string
           title: string
           event_title: 'Overnight' | 'Guest Fire' | 'Table' | 'Outside' | 'Guest Play' | 'Guest Lover' | null
           event_type: 'Culto' | 'Oração' | 'Vigilia' | 'Confraternização' | null
@@ -280,6 +360,7 @@ export interface Database {
         }
         Insert: {
           id?: string
+          church_id?: string
           title: string
           event_title?: 'Overnight' | 'Guest Fire' | 'Table' | 'Outside' | 'Guest Play' | 'Guest Lover' | null
           event_type?: 'Culto' | 'Oração' | 'Vigilia' | 'Confraternização' | null
@@ -294,6 +375,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          church_id?: string
           title?: string
           event_title?: 'Overnight' | 'Guest Fire' | 'Table' | 'Outside' | 'Guest Play' | 'Guest Lover' | null
           event_type?: 'Culto' | 'Oração' | 'Vigilia' | 'Confraternização' | null
@@ -768,6 +850,7 @@ export interface Database {
           p_title: string
           p_message: string
           p_action_url?: string | null
+          p_church_id?: string | null
         }
         Returns: number
       }
@@ -801,6 +884,57 @@ export interface Database {
       }
       visitor_checkin_invite_create: {
         Args: { p_event_id: string }
+        Returns: Json
+      }
+      church_invite_preview: {
+        Args: { p_code: string }
+        Returns: Json
+      }
+      claim_church_invite_for_current_user: {
+        Args: { p_code: string }
+        Returns: Json
+      }
+      get_tenant_provisioning_mode: {
+        Args: Record<string, never>
+        Returns: Json
+      }
+      super_admin_create_church: {
+        Args: { p_name: string; p_ministry_name: string; p_invite_code?: string | null }
+        Returns: Json
+      }
+      super_admin_list_churches: {
+        Args: Record<string, never>
+        Returns: Json
+      }
+      super_admin_add_church_invite: {
+        Args: { p_church_id: string; p_code?: string | null }
+        Returns: Json
+      }
+      super_admin_set_church_status: {
+        Args: { p_church_id: string; p_status: string }
+        Returns: Json
+      }
+      super_admin_set_tenant_provisioning_mode: {
+        Args: { p_mode: string }
+        Returns: Json
+      }
+      church_admin_update_branding: {
+        Args: {
+          p_ministry_name?: string | null
+          p_logo_url?: string | null
+          p_primary_color?: string | null
+          p_secondary_color?: string | null
+        }
+        Returns: Json
+      }
+      platform_stripe_provision_church: {
+        Args: {
+          p_church_name: string
+          p_ministry_name: string
+          p_customer_id?: string | null
+          p_subscription_id?: string | null
+          p_invite_code?: string | null
+        }
         Returns: Json
       }
     }

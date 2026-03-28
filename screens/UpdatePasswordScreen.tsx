@@ -15,6 +15,7 @@ import { AlertCircle, Eye, EyeOff, Lock } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { supabase, getCurrentUser } from '../services/supabase';
+import { mapAppRole } from './AuthScreen';
 import { COLORS } from '../constants/colors';
 
 const MIN_LEN = 6;
@@ -55,8 +56,7 @@ export default function UpdatePasswordScreen({ onComplete, onCancel }: Props) {
       const { error: updErr } = await supabase.auth.updateUser({ password });
       if (updErr) throw updErr;
       const profile = await getCurrentUser();
-      const role = (profile as { role?: 'admin' | 'user' })?.role === 'admin' ? 'admin' : 'user';
-      onComplete(role);
+      onComplete(mapAppRole(profile as { role?: string } | null));
     } catch (e: any) {
       setError(e?.message ?? 'Não foi possível atualizar a senha.');
     } finally {

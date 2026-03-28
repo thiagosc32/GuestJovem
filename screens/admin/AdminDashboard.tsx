@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   Users, Calendar, TrendingUp, Heart, QrCode, Bell, LogOut, BookOpen, 
-Plus, Megaphone, Edit2, Trash2, X, Settings, Image as ImageIcon, User, Lock, ChevronDown, ChevronRight, ArrowLeft, LayoutGrid
+Plus, Megaphone, Edit2, Trash2, X, Settings, Image as ImageIcon, User, Lock, ChevronDown, ChevronRight, ArrowLeft, LayoutGrid, Palette
 } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -701,6 +701,7 @@ const handleDeleteEvent = async (eventId: string, eventTitle: string) => {
       { label: 'Usuários', icon: Users, color: '#8B5CF6', screen: 'UserManagement' },
       { label: 'Pedidos privados', icon: Lock, color: COLORS.primary, screen: 'AdminPrivatePrayers' },
       { label: 'Configurações', icon: Settings, color: '#6B7280', screen: 'AppSettings' },
+      { label: 'Identidade da igreja', icon: Palette, color: '#EC4899', screen: 'ChurchBrandingSettings' },
       { label: 'Conquistas', icon: BookOpen, color: '#EAB308', screen: 'AdminAchievements' },
     ].map((action, i) => (
       <TouchableOpacity 
