@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CheckCircle, Circle, BookOpen, Calendar, Sparkles, ArrowLeft } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import Gradient from '../../components/ui/Gradient';
@@ -39,6 +40,7 @@ import SpiritualCompanion from '../../components/SpiritualCompanion';
 import ConstancyLevelUpModal from '../../components/ConstancyLevelUpModal';
 
 export default function DisciplinesScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const [disciplines, setDisciplines] = useState<{
     daily: SpiritualDiscipline[];
@@ -156,7 +158,7 @@ export default function DisciplinesScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Gradient
-        colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+        colors={[theme.gradientStart, theme.gradientMiddle]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}

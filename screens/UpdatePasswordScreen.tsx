@@ -17,6 +17,7 @@ import { BlurView } from 'expo-blur';
 import { supabase, getCurrentUser } from '../services/supabase';
 import { mapAppRole } from './AuthScreen';
 import { COLORS } from '../constants/colors';
+import { useAppTheme } from '../contexts/ChurchBrandingContext';
 
 const MIN_LEN = 6;
 
@@ -30,6 +31,7 @@ type Props = {
  * Não confundir com login Google — sessão é só de recuperação até updateUser({ password }).
  */
 export default function UpdatePasswordScreen({ onComplete, onCancel }: Props) {
+  const theme = useAppTheme();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [show1, setShow1] = useState(false);
@@ -65,8 +67,8 @@ export default function UpdatePasswordScreen({ onComplete, onCancel }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <LinearGradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={StyleSheet.absoluteFill} />
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.gradientStart }]} edges={['top', 'left', 'right']}>
+      <LinearGradient colors={[theme.gradientStart, theme.gradientMiddle]} style={StyleSheet.absoluteFill} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -133,7 +135,7 @@ export default function UpdatePasswordScreen({ onComplete, onCancel }: Props) {
                 activeOpacity={0.85}
               >
                 <LinearGradient
-                  colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+                  colors={[theme.gradientStart, theme.gradientMiddle]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.btnGrad}
@@ -160,7 +162,7 @@ export default function UpdatePasswordScreen({ onComplete, onCancel }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.gradientStart },
+  safe: { flex: 1 },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingBottom: 40, paddingHorizontal: 20 },
   header: { alignItems: 'center', marginTop: 32, marginBottom: 24 },

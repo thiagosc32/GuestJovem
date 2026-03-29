@@ -67,3 +67,43 @@ export function inviteHeaderTagline(branding: InviteBrandingSnapshot | null): st
   if (s) return s;
   return 'Conectando jovens na fé';
 }
+
+const EMPTY_BRAND: InviteBrandingSnapshot = {
+  name: '',
+  ministry_name: '',
+  ministry_slogan: null,
+  logo_url: null,
+  primary_color: null,
+  secondary_color: null,
+};
+
+/** Degradê dos cabeçalhos (admin / jovem) a partir da paleta da igreja. */
+export function brandedGradientStops(
+  primary: string | null | undefined,
+  secondary: string | null | undefined
+): [string, string] {
+  return inviteGradientColors({
+    ...EMPTY_BRAND,
+    primary_color: primary ?? null,
+    secondary_color: secondary ?? null,
+  });
+}
+
+/** Cabeçalhos claros (Início, Devocional): branco → toque suave da cor primária. */
+export function brandedHeaderSoftGradient(
+  primary: string | null | undefined,
+  secondary: string | null | undefined
+): [string, string] {
+  const p = parseInviteHex(primary ?? undefined);
+  const s = parseInviteHex(secondary ?? undefined);
+  if (!p && !s) return ['#FFFFFF', '#F0F4FF'];
+  const tint = p ?? s!;
+  return ['#FFFFFF', `${tint}26`];
+}
+
+/** Tom mais escuro da primária (overlays, hero). */
+export function brandedPrimaryDark(primary: string | null | undefined): string {
+  const p = parseInviteHex(primary ?? undefined);
+  if (!p) return COLORS.primaryDark;
+  return darkenHex(p, 0.72);
+}

@@ -7,6 +7,7 @@ import Gradient from '../../components/ui/Gradient';
 import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { supabase } from '../../services/supabase';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles, SHADOWS } from '../../constants/theme';
 import { RootStackParamList } from '../../types/navigation';
@@ -27,6 +28,7 @@ const ACTION_OPTIONS = [
 ];
 
 export default function CreateAnnouncementScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation();
   const route = useRoute<CreateAnnouncementRouteProp>();
   const announcementToEdit = route.params?.announcement;
@@ -123,7 +125,7 @@ export default function CreateAnnouncementScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <DismissKeyboardView style={{ flex: 1 }}>
-            <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+            <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
               <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                 <ArrowLeft size={24} color="#fff" />
               </TouchableOpacity>

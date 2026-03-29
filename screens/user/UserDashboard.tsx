@@ -47,6 +47,7 @@ import LevelDisclaimer from '../../components/LevelDisclaimer';
 import AnnouncementCard from '../../components/AnnouncementCard';
 import DrawerMenuButton from '../../components/navigation/DrawerMenuButton';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { DEFAULT_EVENT_IMAGE_URL } from '../../constants/images';
 import { SPACING } from '../../constants/dimensions';
 import { SHADOWS } from '../../constants/theme';
@@ -63,6 +64,7 @@ const COMPANION_AVATAR_COLORS: Record<CompanionStateKey, string> = {
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function UserDashboard() {
+  const theme = useAppTheme();
   const navigation = useNavigation<NavigationProp>();
 
   /* ===== Estados ===== */
@@ -121,6 +123,31 @@ export default function UserDashboard() {
       weekStart.setHours(0, 0, 0, 0);
       const weekStartStr = weekStart.toISOString().split('T')[0];
 
+      const role = (user as { role?: string } | null)?.role;
+      const tenantCid =
+        user && role !== 'super_admin' ? (user as { church_id?: string | null }).church_id ?? null : null;
+
+      let annQ = supabase.from('announcements').select('*').eq('is_active', true).order('priority', { ascending: true });
+      let evQ = supabase
+        .from('events')
+        .select('*')
+        .gte('date', now.toISOString().split('T')[0])
+        .order('date', { ascending: true })
+        .limit(3);
+      let devQ = supabase.from('devotionals').select('*').gte('date', weekStartStr).order('date', { ascending: false }).limit(7);
+      if (tenantCid) {
+        annQ = annQ.eq('church_id', tenantCid);
+        evQ = evQ.eq('church_id', tenantCid);
+        devQ = devQ.eq('church_id', tenantCid);
+      }
+
+      let attendancePromise: Promise<{ count: number | null }> = Promise.resolve({ count: 0 });
+      if (userId) {
+        let attQ = supabase.from('attendance_records').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+        if (tenantCid) attQ = attQ.eq('church_id', tenantCid);
+        attendancePromise = attQ;
+      }
+
       const [
         announcementsRes,
         eventsRes,
@@ -129,11 +156,11 @@ export default function UserDashboard() {
         attendanceRes,
         notificationsList,
       ] = await Promise.all([
-        supabase.from('announcements').select('*').eq('is_active', true).order('priority', { ascending: true }),
-        supabase.from('events').select('*').gte('date', now.toISOString().split('T')[0]).order('date', { ascending: true }).limit(3),
+        annQ,
+        evQ,
         getCurrentVerseOfWeek().catch(() => null),
-        supabase.from('devotionals').select('*').gte('date', weekStartStr).order('date', { ascending: false }).limit(7),
-        userId ? supabase.from('attendance_records').select('id', { count: 'exact', head: true }).eq('user_id', userId) : Promise.resolve({ count: 0 }),
+        devQ,
+        attendancePromise,
         userId ? getNotifications(userId) : Promise.resolve([]),
       ]);
 
@@ -231,7 +258,7 @@ export default function UserDashboard() {
         
         {/* HEADER */}
         <View style={styles.premiumHeader}>
-          <Gradient colors={['#FFFFFF', '#F0F4FF']} style={styles.headerBackgroundGradient} />
+          <Gradient colors={theme.headerSoftGradient} style={styles.headerBackgroundGradient} />
           <View style={styles.headerContentWrapper}>
             <Animated.View style={[styles.headerTop, { opacity: headerOpacity, transform: [{ translateY: headerTranslateY }] }]}>
               <DrawerMenuButton />
@@ -313,7 +340,7 @@ export default function UserDashboard() {
 
           {/* VERSÍCULO */}
           <View style={styles.section}>
-            <Gradient colors={[COLORS.secondary, `${COLORS.secondary}CC`]} style={styles.verseCard}>
+            <Gradient colors={[theme.secondary, `${theme.secondary}CC`]} style={styles.verseCard}>
               <View style={styles.verseIconContainer}><BookOpen size={24} color="#fff" /></View>
               <Text style={styles.verseTitle}>Versículo da Semana</Text>
               <Text style={styles.verseReference}>{verseOfWeek.reference}</Text>

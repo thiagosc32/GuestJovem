@@ -806,16 +806,22 @@ export interface Database {
       }
       app_settings: {
         Row: {
+          id: string
           key: string
           value: string
+          church_id: string | null
         }
         Insert: {
+          id?: string
           key: string
           value: string
+          church_id?: string | null
         }
         Update: {
+          id?: string
           key?: string
           value?: string
+          church_id?: string | null
         }
       }
     }
@@ -951,6 +957,10 @@ export interface Database {
           p_secondary_color?: string | null
         }
         Returns: Json
+      }
+      church_invite_code_for_my_church: {
+        Args: Record<PropertyKey, never>
+        Returns: string | null
       }
       platform_stripe_provision_church: {
         Args: {

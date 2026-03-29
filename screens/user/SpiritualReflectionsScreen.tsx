@@ -22,6 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PenLine, ArrowLeft, Sparkles } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import Gradient from '../../components/ui/Gradient';
@@ -31,6 +32,7 @@ import { getCurrentUser } from '../../services/supabase';
 import { XP_BY_ACTION, GROWTH_UNIT_LABEL } from '../../constants/spiritualJourney';
 
 export default function SpiritualReflectionsScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const [reflections, setReflections] = useState<{ id: string; content: string; created_at: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +104,7 @@ export default function SpiritualReflectionsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Gradient
-        colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+        colors={[theme.gradientStart, theme.gradientMiddle]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}

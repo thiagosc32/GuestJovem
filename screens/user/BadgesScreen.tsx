@@ -25,6 +25,7 @@ import {
   Shield,
 } from 'lucide-react-native';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import Gradient from '../../components/ui/Gradient';
@@ -54,6 +55,7 @@ const BADGE_ICONS: Record<string, React.ComponentType<{ color: string; size: num
 };
 
 export default function BadgesScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const [achievements, setAchievements] = useState<UserAchievementProgress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,7 @@ export default function BadgesScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Gradient
-        colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+        colors={[theme.gradientStart, theme.gradientMiddle]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}

@@ -211,9 +211,19 @@ export const signUp = async (email: string, password: string, name: string, invi
 
 export const signOut = async () => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
+  try {
+    const { data: inviteCode } = await supabaseClient.rpc('church_invite_code_for_my_church');
+    const c = typeof inviteCode === 'string' ? inviteCode.trim() : '';
+    if (c) {
+      await AsyncStorage.setItem(PENDING_CHURCH_INVITE_KEY, c);
+    } else {
+      await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
+    }
+  } catch {
+    await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
+  }
   const { error } = await supabaseClient.auth.signOut();
   if (error) throw error;
-  await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
 };
 
 /** Envia email de redefinição de senha para o endereço informado (usa SMTP do projeto se configurado). */
@@ -311,6 +321,14 @@ export const getCurrentUser = async () => {
     return null;
   }
 };
+
+/** Para filtros `.eq('church_id', …)` no cliente (reforço além do RLS). `null` = super_admin ou sem igreja definida. */
+export async function getTenantChurchIdForDataScope(): Promise<string | null> {
+  const u = await getCurrentUser();
+  if (!u) return null;
+  if ((u as { role?: string }).role === 'super_admin') return null;
+  return (u as { church_id?: string | null }).church_id ?? null;
+}
 
 export type ChurchBrandingRow = {
   id: string;
@@ -562,10 +580,10 @@ export const updateUserRole = async (userId: string, role: 'user' | 'admin' | 's
 
 export const getAllUsers = async () => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
-    .from('users')
-    .select('*, youth_profiles(*)')
-    .order('created_at', { ascending: false });
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient.from('users').select('*, youth_profiles(*)').order('created_at', { ascending: false });
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
 
   if (error) throw error;
   return data;
@@ -574,11 +592,10 @@ export const getAllUsers = async () => {
 // Devotional Queries
 export const getDevotionals = async (limit: number = 20, offset: number = 0) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
-    .from('devotionals')
-    .select('*')
-    .order('date', { ascending: false })
-    .range(offset, offset + limit - 1);
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient.from('devotionals').select('*').order('date', { ascending: false }).range(offset, offset + limit - 1);
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
 
   if (error) throw error;
   return data;
@@ -617,12 +634,15 @@ export const deleteDevotional = async (id: string) => {
 // Prayer Request Queries
 export const getPrayerRequests = async (limit: number = 20, offset: number = 0) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient
     .from('prayer_requests')
     .select('*, users!prayer_requests_user_id_fkey(name, avatar_url)')
     .eq('is_public', true)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
 
   if (error) throw error;
   return data;
@@ -650,10 +670,10 @@ export const incrementPrayerCount = async (requestId: string) => {
 /** Retorna os IDs dos pedidos pelos quais o usuário já orou (para toggle: segundo clique subtrai) */
 export const getPrayedRequestIds = async (userId: string): Promise<string[]> => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
-    .from('prayer_request_prayers')
-    .select('request_id')
-    .eq('user_id', userId);
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient.from('prayer_request_prayers').select('request_id').eq('user_id', userId);
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []).map((r: any) => r.request_id);
 };
@@ -735,11 +755,14 @@ export const deletePrayerRequest = async (requestId: string) => {
 /** Pedidos privados (para admins): lista onde is_public = false, com nome do autor */
 export const getPrivatePrayerRequests = async () => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient
     .from('prayer_requests')
     .select('*, users!prayer_requests_user_id_fkey(name)')
     .eq('is_public', false)
     .order('created_at', { ascending: false });
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
 };
@@ -747,7 +770,11 @@ export const getPrivatePrayerRequests = async () => {
 /** Notificar admins quando um pedido privado é criado */
 export const notifyAdminsOfPrivatePrayerRequest = async (requestId: string, title: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data: admins } = await supabaseClient.from('users').select('id').eq('role', 'admin');
+  const { data: reqRow } = await supabaseClient.from('prayer_requests').select('church_id').eq('id', requestId).maybeSingle();
+  const cid = (reqRow as { church_id?: string | null } | null)?.church_id ?? null;
+  let adminsQ = supabaseClient.from('users').select('id').eq('role', 'admin');
+  if (cid) adminsQ = adminsQ.eq('church_id', cid);
+  const { data: admins } = await adminsQ;
   if (!admins?.length) return;
   const rows = admins.map((a: any) => ({
     user_id: a.id,
@@ -755,6 +782,7 @@ export const notifyAdminsOfPrivatePrayerRequest = async (requestId: string, titl
     title: 'Novo pedido de oração privado',
     message: title || 'Um jovem enviou um pedido de oração privado.',
     action_url: `prayer_private`,
+    church_id: cid,
   }));
   await supabaseClient.from('notifications').insert(rows);
 };
@@ -897,11 +925,14 @@ export const getEventById = async (eventId: string) => {
 
 export const getEvents = async (limit: number = 20, offset: number = 0) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient
     .from('events')
     .select('*, event_rsvps(count)')
     .order('date', { ascending: true })
     .range(offset, offset + limit - 1);
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
 
   if (error) throw error;
   return data;
@@ -955,11 +986,14 @@ export const createEventRSVP = async (eventId: string, userId: string) => {
 
 export const getUserRSVPs = async (userId: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient
     .from('event_rsvps')
     .select('event_id')
     .eq('user_id', userId)
     .eq('status', 'confirmed');
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
 
   if (error) throw error;
   return data.map((rsvp) => rsvp.event_id);
@@ -968,12 +1002,15 @@ export const getUserRSVPs = async (userId: string) => {
 // Community Post Queries (Mesa Guest Jovem)
 export const getCommunityPosts = async (limit: number = 20, offset: number = 0) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient
     .from('community_posts')
     .select('*, users!community_posts_user_id_fkey(name, avatar_url)')
     .eq('is_moderated', true)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
 
   if (error) throw error;
   return data ?? [];
@@ -1000,11 +1037,14 @@ export const incrementPostLikes = async (postId: string) => {
 
 export const getCommunityPostComments = async (postId: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data: rows, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let cq = supabaseClient
     .from('community_post_comments')
     .select('id, post_id, user_id, content, created_at')
     .eq('post_id', postId)
     .order('created_at', { ascending: true });
+  if (cid) cq = cq.eq('church_id', cid);
+  const { data: rows, error } = await cq;
   if (error) throw error;
   const list = rows ?? [];
   if (list.length === 0) return [];
@@ -1461,11 +1501,14 @@ export const getEventForCurrentTime = async (): Promise<{ id: string; title: str
   const day = String(now.getDate()).padStart(2, '0');
   const localToday = `${year}-${month}-${day}`;
 
-  const { data: events, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let evQ = supabaseClient
     .from('events')
     .select('id, title, date, time')
     .eq('date', localToday)
     .order('time', { ascending: true });
+  if (cid) evQ = evQ.eq('church_id', cid);
+  const { data: events, error } = await evQ;
 
   if (error || !events?.length) return null;
 
@@ -1493,12 +1536,14 @@ export const createAttendanceRecord = async (record: Database['public']['Tables'
   let eventDate: string | null = null;
 
   if (record.event_id) {
-    const { data: existing } = await supabaseClient
+    const cidScope = await getTenantChurchIdForDataScope();
+    let dupQ = supabaseClient
       .from('attendance_records')
       .select('id')
       .eq('user_id', record.user_id)
-      .eq('event_id', record.event_id)
-      .maybeSingle();
+      .eq('event_id', record.event_id);
+    if (cidScope) dupQ = dupQ.eq('church_id', cidScope);
+    const { data: existing } = await dupQ.maybeSingle();
     if (existing) {
       const { data: ev } = await supabaseClient.from('events').select('title').eq('id', record.event_id).maybeSingle();
       const title = (ev as { title?: string } | null)?.title ?? 'este evento';
@@ -1542,6 +1587,7 @@ export const createAttendanceRecord = async (record: Database['public']['Tables'
 
 export const getAttendanceRecords = async (eventId?: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const cid = await getTenantChurchIdForDataScope();
   let query = supabaseClient
     .from('attendance_records')
     .select('*, users(name, avatar_url), events(title, date)')
@@ -1550,6 +1596,7 @@ export const getAttendanceRecords = async (eventId?: string) => {
   if (eventId) {
     query = query.eq('event_id', eventId);
   }
+  if (cid) query = query.eq('church_id', cid);
 
   const { data, error } = await query;
   if (error) throw error;
@@ -1640,11 +1687,14 @@ export function getVisitorOnboardingUrl(token: string): string {
 /** Busca visitantes de um evento */
 export const getEventVisitors = async (eventId: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient
     .from('event_visitors')
     .select('*, visitor_profiles(name, visit_count)')
     .eq('event_id', eventId)
     .order('created_at', { ascending: false });
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
 };
@@ -1677,12 +1727,14 @@ export const getVisitorProfileByToken = async (token: string) => {
 /** Lista todos os visitantes (event_visitors) com evento e perfil. Para admin. */
 export const getAllEventVisitors = async (eventId?: string, limit = 200) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const cid = await getTenantChurchIdForDataScope();
   let query = supabaseClient
     .from('event_visitors')
     .select('*, events(id, title, date), visitor_profiles(name, visit_count)')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (eventId) query = query.eq('event_id', eventId);
+  if (cid) query = query.eq('church_id', cid);
   const { data, error } = await query;
   if (error) throw error;
   return data ?? [];
@@ -2050,11 +2102,14 @@ export const removeMinistryMember = async (id: string) => {
 /** Inscrições em eventos (formulário), com status de pagamento */
 export const getEventRegistrations = async (eventId: string) => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient
     .from('event_registrations')
     .select('*')
     .eq('event_id', eventId)
     .order('created_at', { ascending: false });
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
 };
@@ -2176,12 +2231,15 @@ export const notifyUsersWithRole = async (params: {
 // Announcement Queries
 export const getAnnouncements = async () => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient
+  const cid = await getTenantChurchIdForDataScope();
+  let q = supabaseClient
     .from('announcements')
     .select('*, users(name)')
     .eq('is_active', true)
     .order('priority', { ascending: true })
     .order('created_at', { ascending: false });
+  if (cid) q = q.eq('church_id', cid);
+  const { data, error } = await q;
 
   if (error) throw error;
   return data;
@@ -2241,11 +2299,30 @@ export const getCurrentVerseOfWeek = async (): Promise<{ reference: string; vers
 // Analytics Queries
 export const getAnalytics = async () => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { count: totalYouth } = await supabaseClient.from('users').select('*', { count: 'exact', head: true });
-  const { count: activeYouth } = await supabaseClient.from('users').select('*', { count: 'exact', head: true }).gte('last_active', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
-  const { count: prayerRequests } = await supabaseClient.from('prayer_requests').select('*', { count: 'exact', head: true });
-  const { count: answeredPrayers } = await supabaseClient.from('prayer_requests').select('*', { count: 'exact', head: true }).eq('is_answered', true);
-  const { count: upcomingEvents } = await supabaseClient.from('events').select('*', { count: 'exact', head: true }).gte('date', new Date().toISOString().split('T')[0]);
+  const cid = await getTenantChurchIdForDataScope();
+  let qUsers = supabaseClient.from('users').select('*', { count: 'exact', head: true });
+  let qUsersActive = supabaseClient
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .gte('last_active', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+  let qPray = supabaseClient.from('prayer_requests').select('*', { count: 'exact', head: true });
+  let qPrayAns = supabaseClient
+    .from('prayer_requests')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_answered', true);
+  let qEvents = supabaseClient.from('events').select('*', { count: 'exact', head: true }).gte('date', new Date().toISOString().split('T')[0]);
+  if (cid) {
+    qUsers = qUsers.eq('church_id', cid);
+    qUsersActive = qUsersActive.eq('church_id', cid);
+    qPray = qPray.eq('church_id', cid);
+    qPrayAns = qPrayAns.eq('church_id', cid);
+    qEvents = qEvents.eq('church_id', cid);
+  }
+  const { count: totalYouth } = await qUsers;
+  const { count: activeYouth } = await qUsersActive;
+  const { count: prayerRequests } = await qPray;
+  const { count: answeredPrayers } = await qPrayAns;
+  const { count: upcomingEvents } = await qEvents;
 
   return {
     totalYouth: totalYouth || 0,
@@ -2269,6 +2346,7 @@ export const getAdminAnalytics = async (): Promise<{
   monthlyTrends: { month: string; attendance: number; devotionals: number; prayers: number }[];
 }> => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
+  const cid = await getTenantChurchIdForDataScope();
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const weekStart = new Date(now);
@@ -2276,6 +2354,45 @@ export const getAdminAnalytics = async (): Promise<{
   weekStart.setHours(0, 0, 0, 0);
   const weekStartStr = weekStart.toISOString();
   const lastWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  let qAllUsers = supabaseClient.from('users').select('id');
+  let qYouthIds = supabaseClient.from('users').select('id').neq('role', 'admin');
+  let qActiveLast = supabaseClient.from('users').select('id').neq('role', 'admin').gte('last_active', thirtyDaysAgo);
+  let qAttendance = supabaseClient.from('attendance_records').select('id, user_id, event_id, check_in_time');
+  let qXp = supabaseClient.from('spiritual_xp_events').select('user_id, action_type, created_at');
+  let qPrayer = supabaseClient.from('prayer_requests').select('id', { count: 'exact', head: true });
+  let qPrayerAns = supabaseClient
+    .from('prayer_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_answered', true);
+  let qUpcoming = supabaseClient
+    .from('events')
+    .select('id', { count: 'exact', head: true })
+    .gte('date', now.toISOString().split('T')[0]);
+  let qDevThisWeek = supabaseClient
+    .from('spiritual_xp_events')
+    .select('user_id')
+    .eq('action_type', 'devotional')
+    .gte('created_at', weekStartStr);
+  let qAttThisWeek = supabaseClient.from('attendance_records').select('id').gte('check_in_time', weekStartStr);
+  let qAttLastWeek = supabaseClient
+    .from('attendance_records')
+    .select('id')
+    .gte('check_in_time', lastWeekStart)
+    .lt('check_in_time', weekStartStr);
+  if (cid) {
+    qAllUsers = qAllUsers.eq('church_id', cid);
+    qYouthIds = qYouthIds.eq('church_id', cid);
+    qActiveLast = qActiveLast.eq('church_id', cid);
+    qAttendance = qAttendance.eq('church_id', cid);
+    qXp = qXp.eq('church_id', cid);
+    qPrayer = qPrayer.eq('church_id', cid);
+    qPrayerAns = qPrayerAns.eq('church_id', cid);
+    qUpcoming = qUpcoming.eq('church_id', cid);
+    qDevThisWeek = qDevThisWeek.eq('church_id', cid);
+    qAttThisWeek = qAttThisWeek.eq('church_id', cid);
+    qAttLastWeek = qAttLastWeek.eq('church_id', cid);
+  }
 
   const [
     allUsersRes,
@@ -2290,17 +2407,17 @@ export const getAdminAnalytics = async (): Promise<{
     attendanceThisWeekRes,
     attendanceLastWeekRes,
   ] = await Promise.all([
-    supabaseClient.from('users').select('id'),
-    supabaseClient.from('users').select('id').neq('role', 'admin'),
-    supabaseClient.from('users').select('id').neq('role', 'admin').gte('last_active', thirtyDaysAgo),
-    supabaseClient.from('attendance_records').select('id, user_id, event_id, check_in_time'),
-    supabaseClient.from('spiritual_xp_events').select('user_id, action_type, created_at'),
-    supabaseClient.from('prayer_requests').select('id', { count: 'exact', head: true }),
-    supabaseClient.from('prayer_requests').select('id', { count: 'exact', head: true }).eq('is_answered', true),
-    supabaseClient.from('events').select('id', { count: 'exact', head: true }).gte('date', now.toISOString().split('T')[0]),
-    supabaseClient.from('spiritual_xp_events').select('user_id').eq('action_type', 'devotional').gte('created_at', weekStartStr),
-    supabaseClient.from('attendance_records').select('id').gte('check_in_time', weekStartStr),
-    supabaseClient.from('attendance_records').select('id').gte('check_in_time', lastWeekStart).lt('check_in_time', weekStartStr),
+    qAllUsers,
+    qYouthIds,
+    qActiveLast,
+    qAttendance,
+    qXp,
+    qPrayer,
+    qPrayerAns,
+    qUpcoming,
+    qDevThisWeek,
+    qAttThisWeek,
+    qAttLastWeek,
   ]);
 
   const youthIds = new Set<string>((youthIdsRes.data ?? []).map((r: { id: string }) => r.id));
@@ -2334,11 +2451,28 @@ export const getAdminAnalytics = async (): Promise<{
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const start = d.toISOString().slice(0, 7) + '-01T00:00:00.000Z';
     const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59).toISOString();
-    const [attTrend, devTrend, prayTrend] = await Promise.all([
-      supabaseClient.from('attendance_records').select('id', { count: 'exact', head: true }).gte('check_in_time', start).lte('check_in_time', end),
-      supabaseClient.from('spiritual_xp_events').select('id', { count: 'exact', head: true }).eq('action_type', 'devotional').gte('created_at', start).lte('created_at', end),
-      supabaseClient.from('prayer_requests').select('id', { count: 'exact', head: true }).gte('created_at', start).lte('created_at', end),
-    ]);
+    let qAttTr = supabaseClient
+      .from('attendance_records')
+      .select('id', { count: 'exact', head: true })
+      .gte('check_in_time', start)
+      .lte('check_in_time', end);
+    let qDevTr = supabaseClient
+      .from('spiritual_xp_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('action_type', 'devotional')
+      .gte('created_at', start)
+      .lte('created_at', end);
+    let qPrayTr = supabaseClient
+      .from('prayer_requests')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', start)
+      .lte('created_at', end);
+    if (cid) {
+      qAttTr = qAttTr.eq('church_id', cid);
+      qDevTr = qDevTr.eq('church_id', cid);
+      qPrayTr = qPrayTr.eq('church_id', cid);
+    }
+    const [attTrend, devTrend, prayTrend] = await Promise.all([qAttTr, qDevTr, qPrayTr]);
     monthlyTrends.push({
       month: monthNames[d.getMonth()],
       attendance: attTrend.count ?? 0,
@@ -2391,20 +2525,78 @@ export const getActiveYouthList = async (daysBack: number = 30): Promise<{ id: s
   }));
 };
 
-/** App settings (key-value). Valor retornado como string. */
+/** App settings por igreja (exc.: super_admin lê/escreve chaves globais como tenant_provisioning_mode). */
 export const getAppSetting = async (key: string): Promise<string | null> => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
-  const { data, error } = await supabaseClient.from('app_settings').select('value').eq('key', key).maybeSingle();
+  const u = await getCurrentUser();
+  if (!u) return null;
+  const role = (u as { role?: string }).role;
+  const churchId = (u as { church_id?: string | null }).church_id ?? null;
+  if (role === 'super_admin') {
+    if (key !== 'tenant_provisioning_mode') return null;
+    const { data, error } = await supabaseClient
+      .from('app_settings')
+      .select('value')
+      .eq('key', key)
+      .is('church_id', null)
+      .maybeSingle();
+    if (error) return null;
+    return data?.value ?? null;
+  }
+  if (!churchId) return null;
+  const { data, error } = await supabaseClient
+    .from('app_settings')
+    .select('value')
+    .eq('key', key)
+    .eq('church_id', churchId)
+    .maybeSingle();
   if (error) return null;
   return data?.value ?? null;
 };
 
-/** Salva ou atualiza um app setting. value será convertido para string. */
+/** Salva ou atualiza um app setting da igreja do utilizador (ou global só para super_admin + tenant_provisioning_mode). */
 export const setAppSetting = async (key: string, value: string | number): Promise<void> => {
   if (!supabaseClient) throw new Error('Supabase client not initialized');
   const str = typeof value === 'number' ? String(value) : value;
-  const { error } = await supabaseClient.from('app_settings').upsert({ key, value: str }, { onConflict: 'key' });
-  if (error) throw error;
+  const u = await getCurrentUser();
+  if (!u) throw new Error('Utilizador não autenticado.');
+  const role = (u as { role?: string }).role;
+  const churchId = (u as { church_id?: string | null }).church_id ?? null;
+  if (role === 'super_admin') {
+    if (key !== 'tenant_provisioning_mode') {
+      throw new Error('Apenas modo de provisão pode ser alterado como super admin; use um admin de igreja para o restante.');
+    }
+    const { data: existing } = await supabaseClient
+      .from('app_settings')
+      .select('id')
+      .eq('key', key)
+      .is('church_id', null)
+      .maybeSingle();
+    if (existing?.id) {
+      const { error } = await supabaseClient.from('app_settings').update({ value: str }).eq('id', existing.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabaseClient.from('app_settings').insert({ key, value: str, church_id: null });
+      if (error) throw error;
+    }
+    return;
+  }
+  if (!churchId) throw new Error('Perfil sem igreja; não é possível guardar esta configuração.');
+  const { data: existing } = await supabaseClient
+    .from('app_settings')
+    .select('id')
+    .eq('key', key)
+    .eq('church_id', churchId)
+    .maybeSingle();
+  if (existing?.id) {
+    const { error } = await supabaseClient.from('app_settings').update({ value: str }).eq('id', existing.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabaseClient
+      .from('app_settings')
+      .insert({ key, value: str, church_id: churchId });
+    if (error) throw error;
+  }
 };
 
 // Real-time Subscriptions

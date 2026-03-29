@@ -10,6 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import { ArrowLeft, ChevronRight, LayoutGrid, Plus, Edit3, Trash2, X, Check } from 'lucide-react-native';
 import Gradient from '../../components/ui/Gradient';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import { MINISTRY_KEYS, getMinistryLabel } from '../../constants/ministries';
@@ -51,6 +52,7 @@ const FALLBACK_COLORS: Record<string, string> = {
 };
 
 export default function MinistriesListScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
 
   const [ministries, setMinistries] = useState<Ministry[]>([]);
@@ -188,7 +190,7 @@ export default function MinistriesListScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+      <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
           <ArrowLeft size={24} color="#fff" strokeWidth={2} />
         </TouchableOpacity>

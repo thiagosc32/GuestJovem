@@ -29,6 +29,7 @@ import Gradient from '../../components/ui/Gradient';
 import ProgressCard from '../../components/ProgressCard';
 import LevelDisclaimer from '../../components/LevelDisclaimer';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPIRITUAL_LEVELS, LEVEL_DISCLAIMER_MESSAGE } from '../../constants/spiritualJourney';
 import { isFeatureAvailableForLevel, getLockedFeatureAlert, LEVEL_NAMES } from '../../constants/featureGates';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
@@ -59,6 +60,7 @@ const getRoleDetails = (role: string) => {
   }
 };
 export default function ProfileScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation();
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -148,14 +150,19 @@ export default function ProfileScreen() {
 
   async function carregarPerfil(userId: string, userEmail: string) {
     try {
-      const [userRes, attendanceRes, journey, youthRes] = await Promise.all([
-        supabase.from('users').select('*').eq('id', userId).single(),
-        supabase.from('attendance_records').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+      const userRes = await supabase.from('users').select('*').eq('id', userId).single();
+      const userRow = userRes.data;
+      const tenantCid =
+        userRow && (userRow as { role?: string }).role !== 'super_admin'
+          ? (userRow as { church_id?: string | null }).church_id ?? null
+          : null;
+      let attQ = supabase.from('attendance_records').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+      if (tenantCid) attQ = attQ.eq('church_id', tenantCid);
+      const [attendanceRes, journey, youthRes] = await Promise.all([
+        attQ,
         getJourneySummary(userId),
         supabase.from('youth_profiles').select('church, calling, volunteer').eq('user_id', userId).limit(1).maybeSingle(),
       ]);
-
-      const userRow = userRes.data;
       const userError = userRes.error;
       if (userError) throw userError;
 
@@ -433,7 +440,7 @@ export default function ProfileScreen() {
       <Animated.View style={[styles.container, { opacity: Platform.OS === 'web' ? (isVisible ? 1 : 0) : fadeAnim }]}>
         {/* Hero com gradiente e avatar */}
         <View style={styles.hero}>
-          <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.secondary]} style={styles.heroGradient} />
+          <Gradient colors={[theme.gradientStart, theme.gradientMiddle, theme.secondary]} style={styles.heroGradient} />
           <View style={styles.heroContent}>
             <View style={styles.avatarWrap}>
               <View style={styles.avatarOuter}>

@@ -6,9 +6,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Progress from 'react-native-progress';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles, SHADOWS } from '../../constants/theme';
-import { getCurrentUser, getDevotionals, supabase } from '../../services/supabase';
+import { getCurrentUser, getDevotionals, getTenantChurchIdForDataScope, supabase } from '../../services/supabase';
 import { awardXp } from '../../services/spiritualJourney';
 import { notifyAchievementUnlockIfNew } from '../../services/achievementsService';
 import { getDevotionalCategoryLabel } from '../../constants/devotionalCategories';
@@ -32,6 +33,7 @@ function mapRowToDevotional(row: any, completedIds: string[]): Devotional {
 type DevotionalFilter = 'week' | 'all';
 
 export default function DevotionalScreen() {
+  const theme = useAppTheme();
   const [devotionals, setDevotionals] = useState<Devotional[]>([]);
   const [selectedDevotional, setSelectedDevotional] = useState<Devotional | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,11 +49,16 @@ export default function DevotionalScreen() {
       const completedRaw = await AsyncStorage.getItem('completedDevotionals');
       const completedIds: string[] = completedRaw ? JSON.parse(completedRaw) : [];
 
-      const { count } = await supabase.from('devotionals').select('*', { count: 'exact', head: true });
+      const cid = await getTenantChurchIdForDataScope();
+      let countQ = supabase.from('devotionals').select('*', { count: 'exact', head: true });
+      if (cid) countQ = countQ.eq('church_id', cid);
+      const { count } = await countQ;
       setTotalOnPlatform(count ?? 0);
 
       if (completedIds.length > 0) {
-        const { data: existing } = await supabase.from('devotionals').select('id').in('id', completedIds);
+        let exQ = supabase.from('devotionals').select('id').in('id', completedIds);
+        if (cid) exQ = exQ.eq('church_id', cid);
+        const { data: existing } = await exQ;
         setUserCompletedTotal((existing ?? []).length);
       } else {
         setUserCompletedTotal(0);
@@ -68,12 +75,14 @@ export default function DevotionalScreen() {
         weekEnd.setDate(weekEnd.getDate() + 6);
         weekEnd.setHours(23, 59, 59, 999);
         const weekEndStr = weekEnd.toISOString().split('T')[0];
-        const { data, error } = await supabase
+        let wq = supabase
           .from('devotionals')
           .select('*')
           .gte('date', weekStartStr)
           .lte('date', weekEndStr)
           .order('date', { ascending: false });
+        if (cid) wq = wq.eq('church_id', cid);
+        const { data, error } = await wq;
         if (error) throw error;
         rows = data || [];
       } else {
@@ -161,7 +170,7 @@ export default function DevotionalScreen() {
         <StatusBar barStyle="dark-content" />
         <View style={styles.detailScreen}>
           <View style={styles.detailHeader}>
-            <Gradient colors={['#FFFFFF', '#F0F4FF']} style={styles.detailHeaderGradient} />
+            <Gradient colors={theme.headerSoftGradient} style={styles.detailHeaderGradient} />
             <TouchableOpacity onPress={() => setSelectedDevotional(null)} style={styles.backButton} activeOpacity={0.8}>
               <ArrowLeft size={22} color={COLORS.primary} strokeWidth={2} />
               <Text style={styles.backButtonText}>Voltar</Text>
@@ -227,7 +236,7 @@ export default function DevotionalScreen() {
       <StatusBar barStyle="dark-content" />
       <ContentWrapper style={containerStyle}>
         <View style={styles.premiumHeader}>
-          <Gradient colors={['#FFFFFF', '#F0F4FF']} style={styles.headerBackgroundGradient} />
+          <Gradient colors={theme.headerSoftGradient} style={styles.headerBackgroundGradient} />
           <View style={styles.headerContentWrapper}>
             <View style={styles.headerTextBlock}>
               <View style={styles.sectionTitleRow}>

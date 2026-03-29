@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { BookMarked, ArrowLeft, Plus, Send, User, Users, MessageSquare, ChevronDown, ChevronRight, Lock } from 'lucide-react-native';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import Gradient from '../../components/ui/Gradient';
@@ -49,6 +50,7 @@ import { getJourneySummary } from '../../services/spiritualJourney';
 type NavParams = { GuidedStudiesScreen: { studyId?: string } };
 
 export default function GuidedStudiesScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<NavParams, 'GuidedStudiesScreen'>>();
   const studyIdParam = route.params?.studyId;
@@ -318,7 +320,7 @@ export default function GuidedStudiesScreen() {
   if (selectedStudy && !loadingStudy) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+        <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
           <TouchableOpacity style={styles.backBtn} onPress={() => setSelectedStudy(null)} activeOpacity={0.8}>
             <ArrowLeft size={24} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
@@ -513,7 +515,7 @@ export default function GuidedStudiesScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+      <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
           onPress={() => navigation.getParent()?.navigate?.('MainTabs', { screen: 'UserDashboard' })}

@@ -4,7 +4,7 @@
  * Envia notificações quando conquistas são desbloqueadas.
  */
 
-import { supabase, createNotification } from './supabase';
+import { supabase, createNotification, getTenantChurchIdForDataScope } from './supabase';
 import { loadProgress } from './bibleReadingProgress';
 import { getCustomPlans } from './bibleCustomPlans';
 import { BIBLE_READING_PLANS } from '../constants/bibleReadingPlans';
@@ -125,10 +125,13 @@ export async function computeProgressForKey(userId: string, progressKey: string)
       return count ?? 0;
     }
     case 'community_posts': {
-      const { count, error } = await supabase
+      const cid = await getTenantChurchIdForDataScope();
+      let q = supabase
         .from('community_posts')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId);
+      if (cid) q = q.eq('church_id', cid);
+      const { count, error } = await q;
       if (error) return 0;
       return count ?? 0;
     }

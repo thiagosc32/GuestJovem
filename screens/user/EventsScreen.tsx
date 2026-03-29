@@ -22,13 +22,14 @@ const Alert = RNAlert ?? {
     }
   },
 };
-import { supabase, createEventRSVP } from '../../services/supabase';
+import { supabase, createEventRSVP, getTenantChurchIdForDataScope } from '../../services/supabase';
 import { awardXp } from '../../services/spiritualJourney';
 import { notifyAchievementUnlockIfNew } from '../../services/achievementsService';
 
 import EventCard from '../../components/EventCard';
 import Gradient from '../../components/ui/Gradient';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { SHADOWS } from '../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
@@ -54,6 +55,7 @@ const CATEGORIES = [
 ];
 
 export default function EventsScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,12 +73,12 @@ export default function EventsScreen() {
 
   const fetchHeroImage = async () => {
     try {
-      const { data } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'events_hero_image')
-        .single();
-      
+      const cid = await getTenantChurchIdForDataScope();
+      let q = supabase.from('app_settings').select('value').eq('key', 'events_hero_image');
+      if (cid) q = q.eq('church_id', cid);
+      else q = q.is('church_id', null);
+      const { data } = await q.maybeSingle();
+
       if (data?.value) setHeroImage(data.value);
     } catch (error) {
       console.error('Erro ao carregar imagem de fundo:', error);
@@ -86,7 +88,10 @@ export default function EventsScreen() {
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('events').select('*').order('date', { ascending: true });
+      const cid = await getTenantChurchIdForDataScope();
+      let q = supabase.from('events').select('*').order('date', { ascending: true });
+      if (cid) q = q.eq('church_id', cid);
+      const { data, error } = await q;
       if (error) throw error;
       setEvents(data || []);
       
@@ -178,7 +183,7 @@ const filteredEvents = (events || [])
       
       <Animated.View style={[styles.heroContainer, { transform: [{ translateY: scrollY.interpolate({ inputRange: [0, 250], outputRange: [0, -50], extrapolate: 'clamp' }) }] }]}>
         <ImageBackground source={{ uri: heroImage }} style={styles.heroImage}>
-          <Gradient colors={[`${COLORS.gradientStart}20`, `${COLORS.primaryDark}E6`]} style={styles.heroOverlay} />
+          <Gradient colors={[`${theme.gradientStart}20`, `${theme.primaryDark}E6`]} style={styles.heroOverlay} />
         </ImageBackground>
       </Animated.View>
 

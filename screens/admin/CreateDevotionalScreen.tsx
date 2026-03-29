@@ -7,6 +7,7 @@ import Gradient from '../../components/ui/Gradient';
 import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { createDevotional, deleteDevotional, supabase } from '../../services/supabase';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles, SHADOWS } from '../../constants/theme';
 import { Devotional } from '../../types/models';
@@ -15,6 +16,7 @@ import { RootStackParamList } from '../../types/navigation';
 type CreateDevotionalRouteProp = RouteProp<RootStackParamList, 'CreateDevotional'>;
 
 export default function CreateDevotionalScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation();
   const route = useRoute<CreateDevotionalRouteProp>();
   const devotionalToEdit = route.params?.devotional;
@@ -140,7 +142,7 @@ export default function CreateDevotionalScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <DismissKeyboardView style={{ flex: 1 }}>
-            <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+            <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
               <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                 <ArrowLeft size={24} color="#fff" />
               </TouchableOpacity>

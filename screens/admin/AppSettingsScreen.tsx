@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image as ImageIcon, ArrowLeft, BookOpen, Calendar, Layout, Palette, ChevronRight } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
-import { supabase } from '../../services/supabase';
+import { supabase, setAppSetting } from '../../services/supabase';
 import { COLORS } from '../../constants/colors';
 import { SPACING } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
@@ -22,7 +22,19 @@ export default function AppSettingsScreen() {
   }, []);
 
   const fetchCurrentSettings = async () => {
-    const { data } = await supabase.from('app_settings').select('*');
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: profile } = user
+      ? await supabase.from('users').select('role, church_id').eq('id', user.id).maybeSingle()
+      : { data: null };
+    const role = (profile as { role?: string } | null)?.role;
+    const churchId =
+      profile && role !== 'super_admin'
+        ? (profile as { church_id?: string | null }).church_id ?? null
+        : null;
+    let q = supabase.from('app_settings').select('*');
+    if (churchId) q = q.eq('church_id', churchId);
+    else q = q.is('church_id', null);
+    const { data } = await q;
     if (data) {
       const settingsMap = data.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {});
       setCurrentImages(settingsMap);
@@ -53,12 +65,7 @@ export default function AppSettingsScreen() {
 
         const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(filePath);
 
-        const { error: dbError } = await supabase
-          .from('app_settings')
-          .update({ value: publicUrl })
-          .eq('key', key);
-
-        if (dbError) throw dbError;
+        await setAppSetting(key, publicUrl);
 
         setCurrentImages(prev => ({ ...prev, [key]: publicUrl }));
         Alert.alert('Sucesso', 'Visual atualizado!');

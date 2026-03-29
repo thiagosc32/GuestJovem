@@ -157,12 +157,12 @@ export default function ChurchBrandingSettingsScreen() {
         />
         <Text style={styles.label}>Logo (opcional)</Text>
         <Text style={styles.hint}>
-          Escolha uma imagem da galeria. Ela será usada no menu e na tela de login quando alguém entrar pelo convite da igreja.
+          Escolha uma imagem da galeria (o recorte é quadrado). O preview e o app exibem o logo em círculo, preenchendo o espaço — ajuste o enquadramento na galeria se precisar.
         </Text>
         <View style={styles.logoRow}>
           <View style={styles.logoPreviewWrap}>
             {logoUrl ? (
-              <Image source={{ uri: logoUrl }} style={styles.logoPreview} resizeMode="contain" />
+              <Image source={{ uri: logoUrl }} style={styles.logoPreview} resizeMode="cover" />
             ) : (
               <View style={styles.logoPlaceholder}>
                 <ImagePlus size={28} color={COLORS.textLight} />

@@ -20,6 +20,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import PrayerCard, { PrayerCardProps } from '../../components/PrayerCard';
 import Gradient from '../../components/ui/Gradient';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles, SHADOWS } from '../../constants/theme';
 import { isFeatureAvailableForLevel, getLockedFeatureAlert } from '../../constants/featureGates';
@@ -66,6 +67,7 @@ function mapRowToPrayerRequest(row: any): PrayerRequest {
 type TabType = 'feed' | 'mine';
 
 export default function PrayerRequestScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation();
   const [tab, setTab] = useState<TabType>('feed');
   const [filter, setFilter] = useState<'all' | 'active' | 'answered'>('all');
@@ -399,7 +401,7 @@ export default function PrayerRequestScreen() {
         <ContentWrapper style={containerStyle}>
           <View style={styles.headerWrap}>
             <Gradient
-              colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+              colors={[theme.gradientStart, theme.gradientMiddle]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.headerGradientBg}

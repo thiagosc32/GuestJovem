@@ -27,6 +27,7 @@ import Gradient from '../../components/ui/Gradient';
 import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { WebDatePickerModal } from '../../components/WebDateTimePicker';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import { getMinistryLabel } from '../../constants/ministries';
@@ -60,6 +61,7 @@ type AgendaEvent = {
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export default function MinistryAgendaScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const ministryKey = (route.params?.ministryKey ?? 'guest_fire') as string;
@@ -311,7 +313,7 @@ export default function MinistryAgendaScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+      <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
           <ArrowLeft size={24} color="#fff" strokeWidth={2} />
         </TouchableOpacity>

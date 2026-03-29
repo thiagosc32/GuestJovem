@@ -29,6 +29,7 @@ import {
 } from 'lucide-react-native';
 import Gradient from '../../components/ui/Gradient';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import { getAllEventVisitors, deleteEventVisitor, getEvents } from '../../services/supabase';
@@ -49,6 +50,7 @@ type VisitorRow = {
 };
 
 export default function VisitorsControlScreen({ navigation }: { navigation: any }) {
+  const theme = useAppTheme();
   const [visitors, setVisitors] = useState<VisitorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -201,7 +203,7 @@ export default function VisitorsControlScreen({ navigation }: { navigation: any 
   return (
     <View style={styles.container}>
       <Gradient
-        colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+        colors={[theme.gradientStart, theme.gradientMiddle]}
         style={styles.header}
       >
         <SafeAreaView edges={['top']} style={styles.headerSafe}>

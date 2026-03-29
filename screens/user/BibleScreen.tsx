@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChevronRight, ChevronLeft, Book, Settings2, Calendar, Check, Plus, Trash2 } from 'lucide-react-native';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import Gradient from '../../components/ui/Gradient';
@@ -36,6 +37,7 @@ const BIBLE_VERSION_KEY = 'bible_version';
 type ViewMode = 'home' | 'books' | 'chapters' | 'reader' | 'plans' | 'planDetail' | 'createPlan';
 
 export default function BibleScreen() {
+  const theme = useAppTheme();
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [books, setBooks] = useState<BibleBook[]>([]);
   const [loading, setLoading] = useState(false);
@@ -196,7 +198,7 @@ export default function BibleScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Gradient
-        colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+        colors={[theme.gradientStart, theme.gradientMiddle]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}

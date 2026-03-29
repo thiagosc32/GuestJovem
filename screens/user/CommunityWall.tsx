@@ -20,6 +20,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import CommunityPost from '../../components/CommunityPost';
 import Gradient from '../../components/ui/Gradient';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles, SHADOWS } from '../../constants/theme';
 import { CommunityPost as CommunityPostType } from '../../types/models';
@@ -47,6 +48,7 @@ function mapRowToPost(row: any): CommunityPostType {
 }
 
 export default function CommunityWall() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const [posts, setPosts] = useState<CommunityPostType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -164,7 +166,7 @@ export default function CommunityWall() {
         <ContentWrapper style={containerStyle}>
           <View style={styles.headerWrap}>
             <Gradient
-              colors={[COLORS.gradientStart, COLORS.gradientMiddle]}
+              colors={[theme.gradientStart, theme.gradientMiddle]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.headerGradientBg}

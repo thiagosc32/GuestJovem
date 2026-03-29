@@ -44,6 +44,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS } from '../constants/colors';
+import { useChurchBranding } from '../contexts/ChurchBrandingContext';
 
 const GLASS_BORDER_COLOR = 'rgba(255, 255, 255, 0.2)';
 
@@ -67,6 +68,7 @@ interface AuthScreenProps {
 }
 
 export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
+  const { refresh: refreshChurchBranding } = useChurchBranding();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -265,6 +267,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
       await signIn(emailTrim, passwordVal);
       await claimAndClearPendingChurchInvite();
       const profile = await getCurrentUser();
+      await refreshChurchBranding();
       onAuthenticate(mapAppRole(profile));
     } catch (err: any) {
       console.error('Auth error:', err);
@@ -382,6 +385,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
       if (data.session && user && confirmed) {
         await AsyncStorage.removeItem(PENDING_CHURCH_INVITE_KEY).catch(() => {});
         const profile = await getCurrentUser();
+        await refreshChurchBranding();
         onAuthenticate(mapAppRole(profile));
         return;
       }
@@ -455,8 +459,10 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
           try {
             await setSessionFromOAuthUrl(event.data.url);
             await ensureUserProfileForOAuth();
+            await claimAndClearPendingChurchInvite();
             const user = await getCurrentUser();
             if (user) {
+              await refreshChurchBranding();
               onAuthenticate(mapAppRole(user as { role?: string }));
             }
           } catch (e: any) {
@@ -483,8 +489,10 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
       if (result.type === 'success' && result.url) {
         await setSessionFromOAuthUrl(result.url);
         await ensureUserProfileForOAuth();
+        await claimAndClearPendingChurchInvite();
         const user = await getCurrentUser();
         if (user) {
+          await refreshChurchBranding();
           onAuthenticate(mapAppRole(user as { role?: string }));
         }
         return;
@@ -576,7 +584,7 @@ export default function AuthScreen({ onAuthenticate }: AuthScreenProps) {
                     <Image
                       source={{ uri: logoUri }}
                       style={styles.logoImage}
-                      contentFit="contain"
+                      contentFit="cover"
                       accessibilityLabel="Logo"
                     />
                   ) : (
@@ -1133,8 +1141,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   logoImage: {
-    width: 72,
-    height: 72,
+    ...StyleSheet.absoluteFillObject,
   },
   taglineWrap: {
     alignItems: 'center',

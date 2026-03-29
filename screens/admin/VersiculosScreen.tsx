@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Save, BookMarked, Calendar, ChevronRight } from 'lucide-react-native';
-import { setAppSetting } from '../../services/supabase';
+import { setAppSetting, getCurrentUser } from '../../services/supabase';
 import { supabase } from '../../services/supabase';
 import { getChapter } from '../../services/bibleApi';
 import type { BibleChapter, BibleVerse } from '../../services/bibleApi';
@@ -50,7 +50,17 @@ export default function VersiculosScreen() {
   }, []);
 
   const fetchVerses = async () => {
-    const { data } = await supabase.from('app_settings').select('key, value').in('key', [VERSE_OF_THE_DAY_KEY, VERSE_OF_THE_WEEK_KEY]);
+    const u = await getCurrentUser();
+    const role = (u as { role?: string } | null)?.role;
+    const churchId =
+      u && role !== 'super_admin' ? (u as { church_id?: string | null }).church_id ?? null : null;
+    let q = supabase
+      .from('app_settings')
+      .select('key, value')
+      .in('key', [VERSE_OF_THE_DAY_KEY, VERSE_OF_THE_WEEK_KEY]);
+    if (churchId) q = q.eq('church_id', churchId);
+    else q = q.is('church_id', null);
+    const { data } = await q;
     if (data) {
       const map = data.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {} as Record<string, string>);
       const rawDay = map[VERSE_OF_THE_DAY_KEY];

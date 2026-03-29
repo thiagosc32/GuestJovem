@@ -21,6 +21,7 @@ import { ArrowLeft, Plus, Trash2, X } from 'lucide-react-native';
 import Gradient from '../../components/ui/Gradient';
 import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY } from '../../constants/theme';
 import {
@@ -42,6 +43,7 @@ const slugify = (v: string) =>
 type StepRow = { id?: string; step_type: string; label: string; description: string };
 
 export default function ScheduleTypeFormScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const scheduleTypeId = route.params?.scheduleTypeId as string | undefined;
@@ -188,7 +190,7 @@ export default function ScheduleTypeFormScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+      <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
           <ArrowLeft size={24} color="#fff" strokeWidth={2} />
         </TouchableOpacity>

@@ -28,6 +28,7 @@ import Gradient from '../../components/ui/Gradient';
 import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { WebDateInputInline } from '../../components/WebDateTimePicker';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import { getMinistryLabel, getMinistryPurpose, MINISTRY_PHRASES } from '../../constants/ministries';
@@ -50,7 +51,7 @@ import {
   updateMinistryMember,
   removeMinistryMember,
 } from '../../services/supabase';
-import { getCurrentUser } from '../../services/supabase';
+import { getCurrentUser, getTenantChurchIdForDataScope } from '../../services/supabase';
 import { supabase } from '../../services/supabase';
 
 type TaskRow = {
@@ -89,6 +90,7 @@ type MemberRow = {
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export default function MinistryDetailScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const ministryKey = (route.params?.ministryKey ?? 'guest_fire') as string;
@@ -363,7 +365,10 @@ export default function MinistryDetailScreen() {
     setShowMemberModal(true);
     setLoadingUsers(true);
     try {
-      const { data, error } = await supabase.from('users').select('id, name, avatar_url').order('name');
+      const cid = await getTenantChurchIdForDataScope();
+      let uq = supabase.from('users').select('id, name, avatar_url').order('name');
+      if (cid) uq = uq.eq('church_id', cid);
+      const { data, error } = await uq;
       if (error) throw error;
       const existingIds = new Set(members.map((m) => m.userId));
       setAllUsers((data ?? []).filter((u: any) => !existingIds.has(u.id)));
@@ -474,7 +479,7 @@ export default function MinistryDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+      <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
           <ArrowLeft size={24} color="#fff" strokeWidth={2} />
         </TouchableOpacity>

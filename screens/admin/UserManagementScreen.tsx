@@ -11,15 +11,17 @@ import {
   StatusBar,
   ScrollView,
 } from 'react-native';
-import { supabase } from '../../services/supabase';
+import { supabase, getAllUsers } from '../../services/supabase';
 import { Users, Trash2, ShieldCheck, X, User, ChevronLeft } from 'lucide-react-native';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import Gradient from '../../components/ui/Gradient';
 import { useNavigation } from '@react-navigation/native';
 import { MINISTRY_FUNCTIONS, getMinistryFunctionLabel, getMinistryFunctionColor } from '../../constants/ministryFunctions';
 
 export default function UserManagementScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,13 +36,11 @@ export default function UserManagementScreen() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
-      setUsers(data || []);
+      const data = await getAllUsers();
+      const sorted = [...(data || [])].sort((a: any, b: any) =>
+        String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { sensitivity: 'base' })
+      );
+      setUsers(sorted);
     } catch (error: any) {
       Alert.alert('Erro', error.message);
     } finally {
@@ -99,7 +99,7 @@ export default function UserManagementScreen() {
       <StatusBar barStyle="light-content" />
       
       {/* HEADER ESTILIZADO */}
-      <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+      <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <ChevronLeft color="#fff" size={28} />

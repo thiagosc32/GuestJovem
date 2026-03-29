@@ -1,4 +1,12 @@
-import { supabase, signOut, deleteDevotional, getAdminAnalytics, getAppSetting, setAppSetting } from '../../services/supabase';
+import {
+  supabase,
+  signOut,
+  deleteDevotional,
+  getAdminAnalytics,
+  getAppSetting,
+  setAppSetting,
+  getTenantChurchIdForDataScope,
+} from '../../services/supabase';
 import React, { useRef, useEffect, useState } from 'react';
 import { 
   View, 
@@ -30,6 +38,7 @@ import { decode } from 'base64-arraybuffer';
 import Gradient from '../../components/ui/Gradient';
 import ProgressCard from '../../components/ProgressCard';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { getDevotionalCategoryLabel } from '../../constants/devotionalCategories';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, globalStyles, SHADOWS } from '../../constants/theme';
@@ -39,6 +48,7 @@ import { Announcement } from '../../types/models';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function AdminDashboard() {
+  const theme = useAppTheme();
   const navigation = useNavigation<NavigationProp>();
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -114,6 +124,7 @@ export default function AdminDashboard() {
     React.useCallback(() => {
       loadDevotionals();
       loadAnnouncements();
+      loadWhatsappCount();
     }, [])
   );
 
@@ -158,11 +169,14 @@ export default function AdminDashboard() {
   const loadAnnouncements = async () => {
     setIsLoadingAnnouncements(true);
     try {
-      const { data, error } = await supabase
+      const cid = await getTenantChurchIdForDataScope();
+      let q = supabase
         .from('announcements')
         .select('*')
-        .eq('is_active', true) 
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
+      if (cid) q = q.eq('church_id', cid);
+      const { data, error } = await q;
 
       if (error) throw error;
       if (data) {
@@ -188,10 +202,10 @@ export default function AdminDashboard() {
   const loadEvents = async () => {
     setIsLoadingEvents(true);
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('date', { ascending: true });
+      const cid = await getTenantChurchIdForDataScope();
+      let q = supabase.from('events').select('*').order('date', { ascending: true });
+      if (cid) q = q.eq('church_id', cid);
+      const { data, error } = await q;
 
       if (error) throw error;
       if (data) setEvents(data);
@@ -205,11 +219,10 @@ export default function AdminDashboard() {
   const loadDevotionals = async () => {
     setIsLoadingDevotionals(true);
     try {
-      const { data, error } = await supabase
-        .from('devotionals')
-        .select('*')
-        .order('date', { ascending: false })
-        .limit(20);
+      const cid = await getTenantChurchIdForDataScope();
+      let q = supabase.from('devotionals').select('*').order('date', { ascending: false }).limit(20);
+      if (cid) q = q.eq('church_id', cid);
+      const { data, error } = await q;
       if (error) throw error;
       const list = data ?? [];
       const authorIds = [...new Set(list.map((d: any) => d.author_id).filter(Boolean))] as string[];
@@ -392,7 +405,7 @@ const handleDeleteEvent = async (eventId: string, eventTitle: string) => {
       <StatusBar barStyle="light-content" />
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
         
-        <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+        <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
           <TouchableOpacity style={styles.headerBackButton} onPress={() => navigation.navigate('UserTabs')} activeOpacity={0.8}>
             <ArrowLeft size={24} color="#fff" strokeWidth={2} />
           </TouchableOpacity>

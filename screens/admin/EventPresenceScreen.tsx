@@ -29,6 +29,7 @@ import {
 import { supabase, getEventRegistrations, updateRegistrationPaymentStatus, getAttendanceRecords, deleteAttendanceRecord, createAttendanceRecord, getAllUsers } from '../../services/supabase';
 import Gradient from '../../components/ui/Gradient';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 
@@ -39,6 +40,7 @@ function isEventToday(dateStr: string): boolean {
 }
 
 export default function EventPresenceScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -252,7 +254,7 @@ export default function EventPresenceScreen() {
 
   return (
     <View style={styles.container}>
-      <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+      <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
         <SafeAreaView edges={['top']} style={styles.headerSafe}>
           <TouchableOpacity
             style={styles.backButton}

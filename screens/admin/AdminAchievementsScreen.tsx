@@ -36,6 +36,7 @@ import {
 } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
 import { TYPOGRAPHY, SHADOWS } from '../../constants/theme';
 import Gradient from '../../components/ui/Gradient';
@@ -68,6 +69,7 @@ const BADGE_ICONS: Record<string, React.ComponentType<{ color: string; size: num
 };
 
 export default function AdminAchievementsScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation<any>();
   const [definitions, setDefinitions] = useState<AchievementDefinition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,7 +170,7 @@ export default function AdminAchievementsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
+      <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
           <ArrowLeft size={24} color="#fff" strokeWidth={2} />
         </TouchableOpacity>

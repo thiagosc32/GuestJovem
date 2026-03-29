@@ -27,11 +27,13 @@ import Gradient from '../../components/ui/Gradient';
 import { WebDatePickerModal, WebTimePickerModal } from '../../components/WebDateTimePicker';
 import DismissKeyboardView from '../../components/DismissKeyboardView';
 import { COLORS } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { RootStackParamList } from '../../types/navigation';
 
 type CreateEventRouteProp = RouteProp<RootStackParamList, 'CreateEventScreen'>;
 
 export default function CreateEventScreen() {
+  const theme = useAppTheme();
   const navigation = useNavigation();
   const route = useRoute<CreateEventRouteProp>();
   const eventToEdit = route.params?.event;
@@ -208,7 +210,7 @@ export default function CreateEventScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <DismissKeyboardView style={{ flex: 1 }}>
-            <Gradient colors={[COLORS.gradientStart, COLORS.gradientMiddle]} style={styles.header}>
+            <Gradient colors={[theme.gradientStart, theme.gradientMiddle]} style={styles.header}>
               <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                 <ArrowLeft size={24} color="#fff" />
               </TouchableOpacity>
