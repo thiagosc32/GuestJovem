@@ -19,7 +19,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ChevronRight, ChevronLeft, Book, Settings2, Calendar, Check, Plus, Trash2 } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { ChevronRight, ArrowLeft, Book, Settings2, Calendar, Check, Plus, Trash2 } from 'lucide-react-native';
 import { COLORS } from '../../constants/colors';
 import { useAppTheme } from '../../contexts/ChurchBrandingContext';
 import { SPACING, BORDER_RADIUS } from '../../constants/dimensions';
@@ -38,6 +39,7 @@ type ViewMode = 'home' | 'books' | 'chapters' | 'reader' | 'plans' | 'planDetail
 
 export default function BibleScreen() {
   const theme = useAppTheme();
+  const navigation = useNavigation<any>();
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [books, setBooks] = useState<BibleBook[]>([]);
   const [loading, setLoading] = useState(false);
@@ -204,11 +206,16 @@ export default function BibleScreen() {
         style={styles.header}
       >
         <View style={styles.headerRow}>
-          {(viewMode === 'books' || viewMode === 'chapters' || viewMode === 'reader' || viewMode === 'plans' || viewMode === 'planDetail' || viewMode === 'createPlan') && (
-            <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.8}>
-              <ChevronLeft size={24} color="#fff" strokeWidth={2} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => {
+              if (viewMode === 'home') navigation.navigate('UserDashboard');
+              else handleBack();
+            }}
+            activeOpacity={0.8}
+          >
+            <ArrowLeft size={24} color="#fff" strokeWidth={2} />
+          </TouchableOpacity>
           <View style={styles.headerTextWrap}>
             <Text style={styles.title} numberOfLines={2}>
               {viewMode === 'reader' && chapterData
@@ -730,7 +737,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.LG,
   },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.MD },
-  backBtn: { paddingVertical: 4, paddingRight: 4 },
+  backBtn: { alignSelf: 'flex-start', marginBottom: 8, paddingVertical: 4, paddingRight: 4 },
   versionBtn: { paddingVertical: 4, paddingHorizontal: 4 },
   headerTextWrap: { flex: 1, minWidth: 0 },
   title: { ...TYPOGRAPHY.h1, color: '#fff', marginBottom: 8 },

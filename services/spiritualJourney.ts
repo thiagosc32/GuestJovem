@@ -386,59 +386,80 @@ async function updateStreakInProfile(
   };
 }
 
-/** Nível máximo (Colheita) para contas admin. */
+/** Nível máximo (Multiplicar) para contas admin e super_admin. */
 const ADMIN_DEFAULT_LEVEL = 5;
 
-/** Resumo para a tela da Jornada (nível, progresso, streak). Admins sempre no nível Colheita. */
+function isPrivilegedJourneyAccountRole(role: unknown): boolean {
+  const r = typeof role === 'string' ? role.trim().toLowerCase() : '';
+  return r === 'admin' || r === 'super_admin';
+}
+
+function buildJourneySummaryFromLevel(
+  level: number,
+  totalXp: number,
+  streakWeeks: number,
+  progressPercent: number,
+  xpInCurrentLevel: number,
+  xpNeededForNextLevel: number,
+  canLevelUp: boolean
+): SpiritualJourneySummary {
+  const levelInfo = SPIRITUAL_LEVELS.find((l) => l.level === level) ?? SPIRITUAL_LEVELS[0];
+  return {
+    totalXp,
+    level,
+    levelName: levelInfo.name,
+    levelTitle: levelInfo.title,
+    levelDescription: levelInfo.shortDescription,
+    levelShortDescription: levelInfo.shortDescription,
+    levelLongDescription: levelInfo.longDescription,
+    levelInspirationalPhrase: levelInfo.inspirationalPhrase,
+    levelVerse: levelInfo.verse,
+    xpInCurrentLevel,
+    xpNeededForNextLevel,
+    progressPercent,
+    streakWeeks,
+    canLevelUp,
+  };
+}
+
+/** Resumo para a tela da Jornada (nível, progresso, streak). Admins sempre no nível Multiplicar. */
 export async function getJourneySummary(userId: string): Promise<SpiritualJourneySummary | null> {
-  const profile = await getOrCreateJourneyProfile(userId);
-  if (!profile) return null;
-
   const { data: userRow } = await supabase.from('users').select('role').eq('id', userId).single();
-  const isAdmin = (userRow as any)?.role === 'admin';
+  const isAdmin = isPrivilegedJourneyAccountRole((userRow as { role?: string } | null)?.role);
+  const profile = await getOrCreateJourneyProfile(userId);
+  if (!profile) {
+    // Evita tela vazia quando o perfil ainda não foi criado por algum motivo (RLS/race/etc.).
+    if (isAdmin) {
+      return buildJourneySummaryFromLevel(ADMIN_DEFAULT_LEVEL, 0, 0, 100, 0, 0, false);
+    }
+    const initialInfo = getLevelInfo(0);
+    const initialLevel = mapLegacyLevelToCurrent(initialInfo.level);
+    return buildJourneySummaryFromLevel(
+      initialLevel,
+      0,
+      0,
+      initialInfo.progressPercent,
+      initialInfo.xpInLevel,
+      initialInfo.xpNeededInLevel,
+      initialInfo.nextMinXp !== null
+    );
+  }
 
-  const levelInfo = isAdmin
-    ? (SPIRITUAL_LEVELS.find((l) => l.level === ADMIN_DEFAULT_LEVEL) ?? SPIRITUAL_LEVELS[SPIRITUAL_LEVELS.length - 1])
-    : null;
-
-  if (isAdmin && levelInfo) {
-    return {
-      totalXp: profile.total_xp,
-      level: ADMIN_DEFAULT_LEVEL,
-      levelName: levelInfo.name,
-      levelTitle: levelInfo.title,
-      levelDescription: levelInfo.shortDescription,
-      levelShortDescription: levelInfo.shortDescription,
-      levelLongDescription: levelInfo.longDescription,
-      levelInspirationalPhrase: levelInfo.inspirationalPhrase,
-      levelVerse: levelInfo.verse,
-      xpInCurrentLevel: 0,
-      xpNeededForNextLevel: 0,
-      progressPercent: 100,
-      streakWeeks: profile.streak_weeks,
-      canLevelUp: false,
-    };
+  if (isAdmin) {
+    return buildJourneySummaryFromLevel(ADMIN_DEFAULT_LEVEL, profile.total_xp, profile.streak_weeks, 100, 0, 0, false);
   }
 
   const info = getLevelInfo(profile.total_xp);
   const effectiveLevel = mapLegacyLevelToCurrent(info.level);
-  const infoLevel = SPIRITUAL_LEVELS.find((l) => l.level === effectiveLevel) ?? SPIRITUAL_LEVELS[0];
-  return {
-    totalXp: profile.total_xp,
-    level: effectiveLevel,
-    levelName: infoLevel.name,
-    levelTitle: infoLevel.title,
-    levelDescription: infoLevel.shortDescription,
-    levelShortDescription: infoLevel.shortDescription,
-    levelLongDescription: infoLevel.longDescription,
-    levelInspirationalPhrase: infoLevel.inspirationalPhrase,
-    levelVerse: infoLevel.verse,
-    xpInCurrentLevel: info.xpInLevel,
-    xpNeededForNextLevel: info.xpNeededInLevel,
-    progressPercent: info.progressPercent,
-    streakWeeks: profile.streak_weeks,
-    canLevelUp: info.nextMinXp !== null && profile.total_xp >= info.nextMinXp,
-  };
+  return buildJourneySummaryFromLevel(
+    effectiveLevel,
+    profile.total_xp,
+    profile.streak_weeks,
+    info.progressPercent,
+    info.xpInLevel,
+    info.xpNeededInLevel,
+    info.nextMinXp !== null && profile.total_xp >= info.nextMinXp
+  );
 }
 
 /** Cria reflexão espiritual e concede XP (1x/dia) */

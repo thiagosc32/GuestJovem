@@ -51,6 +51,35 @@ const decodeBase64 = (base64: string) => {
   }
   return bytes.buffer;
 };
+
+/** Supabase Storage rejeita `image/jpg`; na web o URI é muitas vezes `blob:…` sem extensão. */
+function getAvatarUploadMimeType(uri: string, pickerMime?: string | null): string {
+  const raw = pickerMime?.trim().toLowerCase();
+  if (raw?.startsWith('image/')) {
+    return raw === 'image/jpg' ? 'image/jpeg' : raw;
+  }
+  const path = uri.split('?')[0].split('#')[0];
+  const ext = path.includes('.') && !path.startsWith('blob:') ? path.split('.').pop()?.toLowerCase() : '';
+  const byExt: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    heic: 'image/heic',
+    heif: 'image/heif',
+  };
+  if (ext && byExt[ext]) return byExt[ext];
+  return 'image/jpeg';
+}
+
+function fileExtensionForImageMime(mime: string): string {
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'image/gif') return 'gif';
+  if (mime === 'image/heic' || mime === 'image/heif') return 'heic';
+  return 'jpg';
+}
 const getRoleDetails = (role: string) => {
   switch (role?.toLowerCase()) {
     case 'admin': return { color: '#EF4444', label: 'Admin' };
@@ -279,21 +308,22 @@ export default function ProfileScreen() {
       if (!base64String) {
         base64String = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       }
-      uploadImage(asset.uri, base64String);
+      uploadImage(asset.uri, base64String, asset.mimeType);
     }
   };
 
-  const uploadImage = async (uri: string, base64: string) => {
+  const uploadImage = async (uri: string, base64: string, pickerMime?: string | null) => {
     try {
       setIsUploading(true);
-      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const contentType = getAvatarUploadMimeType(uri, pickerMime);
+      const fileExt = fileExtensionForImageMime(contentType);
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
       const arrayBuffer = decodeBase64(base64);
 
       const { error } = await supabase.storage
         .from('avatars')
-        .upload(filePath, arrayBuffer, { contentType: `image/${fileExt}`, upsert: true });
+        .upload(filePath, arrayBuffer, { contentType, upsert: true });
 
       if (error) throw error;
 
